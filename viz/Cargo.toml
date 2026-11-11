@@ -1,0 +1,28 @@
+[package]
+name = "spindle-viz"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Spindle visualization lab: animated mockups rendered headlessly"
+publish = false
+
+# Not a member of the root package's workspace.
+[workspace]
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "60df96d0142c0152b5ab598bf460b4addaed4728" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "60df96d0142c0152b5ab598bf460b4addaed4728" }
+rune-fx = { git = "https://github.com/anomalyco/rune", rev = "60df96d0142c0152b5ab598bf460b4addaed4728" }
+rune-light = { git = "https://github.com/anomalyco/rune", rev = "60df96d0142c0152b5ab598bf460b4addaed4728" }
+wgpu = { version = "~30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "wgsl"] }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.release]
+codegen-units = 16
+incremental = true
