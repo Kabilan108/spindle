@@ -10,12 +10,16 @@ mod page;
 mod scenes;
 mod search;
 mod session;
+mod settings_panel;
 mod sidebar;
 pub mod theme;
 mod widgets;
+pub mod zoom;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod zoom_tests;
 
 use std::cell::Cell;
 use std::time::Duration;
@@ -76,6 +80,9 @@ pub struct Main {
     home: Cell<HomeGrid>,
     /// The sidebar's sign-out button was pressed once and is asking to be pressed again.
     pub confirming_sign_out: bool,
+    pub zoom: zoom::Zoom,
+    /// The settings popover is open.
+    pub settings_open: bool,
 }
 
 impl Main {
@@ -97,6 +104,8 @@ impl Main {
             dark: Cell::new(true),
             home: Cell::new(HomeGrid::default()),
             confirming_sign_out: false,
+            zoom: zoom::Zoom::restored(),
+            settings_open: false,
         }
     }
 
@@ -220,7 +229,7 @@ pub fn main_poll(s: &mut Main, clock: f64, tx: &mut Tx) -> bool {
     }
     let visible = s.visible();
     s.progress.poll(&s.link, visible, clock, tx);
-    false
+    s.zoom.poll(clock, tx)
 }
 
 fn chord(spec: &str, ev: &KeyEvent, tx: &Tx) -> bool {
@@ -246,6 +255,8 @@ pub fn main_key(s: &mut Main, ev: &KeyEvent, tx: &mut Tx) -> bool {
         tx.close_window();
     } else if chord("mod+q", ev, tx) {
         tx.quit();
+    } else if let Some(key) = zoom::zoom_key(ev, tx) {
+        s.zoom.press(key, tx);
     } else {
         return false;
     }
@@ -263,7 +274,7 @@ pub fn main_view(s: &Main, cx: &mut Cx<Main>) -> El {
         SessionState::NeedsLogin { url, error } => session::sign_in(p, url.as_deref(), error.as_deref()),
         SessionState::Online { .. } | SessionState::Offline { .. } => shell(s, cx, p, &session),
     };
-    col().key("root").w_full().h_full().fill(p.bg).on_key(main_key).child(body)
+    zoom::frame(s, cx, p, col().key("root").w_full().h_full().fill(p.bg).on_key(main_key), body)
 }
 
 fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El {
@@ -290,6 +301,9 @@ fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El 
         .child(bar::view(s, p));
     if let Some(notice) = s.link.read(|store| store.notice.clone()) {
         root = root.child(widgets::toast(p, &notice));
+    }
+    if s.settings_open {
+        root = root.child(settings_panel::view(s, p));
     }
     root
 }

@@ -1,6 +1,7 @@
 mod engine;
 mod model;
 mod mpris;
+mod settings;
 mod tray;
 mod ui;
 
@@ -29,8 +30,22 @@ fn build_engine() -> Engine {
     Engine::demo()
 }
 
+#[cfg(feature = "spotify")]
+fn check(json: bool) -> i32 {
+    Engine::check(json)
+}
+
+#[cfg(not(feature = "spotify"))]
+fn check(_json: bool) -> i32 {
+    eprintln!("this build has no Spotify engine to check");
+    2
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    if std::env::args().any(|arg| arg == "--check") {
+        std::process::exit(check(std::env::args().any(|arg| arg == "--json")));
+    }
     rune::set_app_id("baliset");
     rune::prewarm_gpu();
     let engine = build_engine();

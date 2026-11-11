@@ -27,7 +27,51 @@ bottom of the sidebar. Audio is cached in
 `~/.cache/baliset/audio`, up to 2 GB.
 
 Keys: Space play/pause, Ctrl+L or Ctrl+K search, Ctrl+Left/Right previous/next, Ctrl+W close
-to tray, Ctrl+Q quit.
+to tray, Ctrl+Q quit, Ctrl+= or Ctrl++ zoom in, Ctrl+- zoom out, Ctrl+0 back to 100%.
+
+## Settings
+
+The sliders button beside your name at the bottom of the sidebar opens the settings: audio
+quality (Low 96, Normal 160 or Very high 320 kbit/s, the default), evening out loudness
+between tracks, and the zoom. librespot fixes the bitrate and loudness setting when its player
+starts, so changes to those apply the next time Baliset starts; the zoom applies at once.
+Zoom goes from 80% to 200% in a browser's steps and is remembered. Zooming in stops where the
+layout would get smaller than 720×480 points, so the default window goes to 150% and a larger
+one further; the zoom indicator says when that happens.
+
+Settings live in `~/.config/baliset/settings.json` (`$XDG_CONFIG_HOME` if set), rewritten
+whole on each change. A missing file or a value that doesn't fit falls back to its default,
+and keys this version doesn't know are kept.
+
+## When something looks broken
+
+```sh
+baliset --check          # one line per Spotify service the app uses
+baliset --check --json   # the same as JSON
+```
+
+`--check` signs in with the saved sign-in, without showing up as a Connect device and
+without playing anything, and makes one cheap read-only call to every service Baliset reads:
+the profile, playlists, a playlist's tracks, track, album and artist metadata, Liked Songs and
+saved albums, listening history, search, song radio and stations, followed shows, saved
+episodes, followed artists, show and episode metadata, and where a track's audio file is and
+its key. Each line says PASS or FAIL, the call and how long it took; a failure adds the error,
+what in the app depends on it and which source file makes the call. It checks that each
+answer still reads the way the app reads it, not only that it came back, since a changed
+format is the likely breakage. The first line has the versions of Baliset, librespot and Rune,
+and the output holds no tokens, account names or ids, only counts, so it can go into a bug
+report as is. It exits 0 only when every check passed.
+
+```
+baliset 0.1.0 · librespot 0.8.0 · rune 60df96d0142c
+PASS  session connect               AP   login with the saved credentials        1313 ms  signed in
+PASS  playlist list (rootlist)      GET  /playlist/v2/user/{user}/rootlist        138 ms  49 playlists, 49 named
+…
+PASS  audio key                     AP   audio key request (track, file)          114 ms  granted
+all 20 checks passed
+```
+
+To cover a new endpoint, append an entry to `CHECKS` in `src/engine/spotify/check.rs`.
 
 ## Develop
 
@@ -37,6 +81,7 @@ nix develop -c cargo clippy --all-targets
 nix develop -c cargo run -- --demo
 nix develop -c cargo run -- --snap home.png --scene home   # headless render; --list-scenes
 nix develop -c cargo run --bin baliset-engine               # the engine alone, driven from stdin
+nix develop -c cargo run -- --check                        # check every Spotify service the app uses
 ```
 
 - `src/model.rs`: the store the UI draws and the commands it sends.

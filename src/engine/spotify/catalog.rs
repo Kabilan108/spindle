@@ -103,13 +103,13 @@ pub(super) struct Collection {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct CollectionPage {
+pub(super) struct CollectionPage {
     /// `(uri, added_at)` of items that are present.
-    items: Vec<(String, u64)>,
-    next: Option<String>,
+    pub items: Vec<(String, u64)>,
+    pub next: Option<String>,
 }
 
-fn collection_page(body: &[u8]) -> Option<CollectionPage> {
+pub(super) fn collection_page(body: &[u8]) -> Option<CollectionPage> {
     let mut page = CollectionPage { items: Vec::new(), next: None };
     for field in wire::fields(body)? {
         match field {
@@ -310,7 +310,7 @@ impl Catalog {
         Ok(tracks.filter_map(|track| track.uri.clone()).filter(|uri| uri.starts_with("spotify:track:")).collect())
     }
 
-    fn collection_headers() -> HeaderMap {
+    pub(super) fn collection_headers() -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static(COLLECTION_TYPE));
         headers.insert(ACCEPT, HeaderValue::from_static(COLLECTION_TYPE));

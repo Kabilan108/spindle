@@ -12,6 +12,8 @@
 mod engine;
 #[path = "../model.rs"]
 mod model;
+#[path = "../settings.rs"]
+mod settings;
 
 use std::io::BufRead;
 

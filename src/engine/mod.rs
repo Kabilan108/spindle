@@ -92,6 +92,13 @@ impl Engine {
         Ok(Self { shared, backend })
     }
 
+    /// `--check`: every Spotify service the app uses, called once and reported on stdout.
+    /// Returns the exit code.
+    #[cfg(feature = "spotify")]
+    pub fn check(json: bool) -> i32 {
+        spotify::check::run(json)
+    }
+
     /// Read the store. Keep the closure short: the engine's threads wait on the same lock.
     pub fn read<R>(&self, read: impl FnOnce(&Store) -> R) -> R {
         self.shared.read(read)
