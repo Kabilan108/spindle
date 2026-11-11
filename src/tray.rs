@@ -92,22 +92,26 @@ fn on_event(link: &Link, main: &AppHandle<Main>, event: TrayEvent) {
     }
 }
 
-/// Baliset's mark, a spool on its side, in the accent's brass, drawn at 4×4 samples a pixel.
+/// Baliset's mark, a zither frame with its strings, in the accent's brass, drawn at 4×4
+/// samples a pixel.
 pub fn icon() -> TrayIcon {
     TrayIcon::rgba(SIZE, SIZE, mark_pixels(SIZE))
 }
 
 fn mark_pixels(size: u32) -> Vec<u8> {
-    // Rounded rects on the mark's 24-unit grid: two flanges and three threads.
-    const SHAPES: [[f32; 5]; 5] = [
-        [3.0, 2.5, 21.0, 6.5, 2.0],
-        [3.0, 17.5, 21.0, 21.5, 2.0],
-        [7.0, 7.9, 17.0, 10.1, 1.1],
-        [7.0, 10.9, 17.0, 13.1, 1.1],
-        [7.0, 13.9, 17.0, 16.1, 1.1],
+    // Round-capped strokes on a 256-unit grid, `[x0, y0, x1, y1, width]`: the frame's post,
+    // base and sloping head, then four strings.
+    const STROKES: [[f32; 5]; 7] = [
+        [45.0, 42.0, 45.0, 213.0, 20.0],
+        [45.0, 213.0, 215.0, 213.0, 20.0],
+        [45.0, 42.0, 211.0, 132.0, 20.0],
+        [76.0, 68.0, 76.0, 181.0, 15.0],
+        [108.0, 85.0, 108.0, 181.0, 15.0],
+        [140.0, 102.0, 140.0, 181.0, 15.0],
+        [172.0, 119.0, 172.0, 181.0, 15.0],
     ];
-    const INK: [u8; 3] = [222, 177, 92];
-    let scale = 24.0 / size as f32;
+    const INK: [u8; 3] = [232, 180, 90];
+    let scale = 256.0 / size as f32;
     let mut out = Vec::with_capacity((size * size * 4) as usize);
     for py in 0..size {
         for px in 0..size {
@@ -116,7 +120,7 @@ fn mark_pixels(size: u32) -> Vec<u8> {
                 for sx in 0..4 {
                     let x = (px as f32 + (sx as f32 + 0.5) / 4.0) * scale;
                     let y = (py as f32 + (sy as f32 + 0.5) / 4.0) * scale;
-                    if SHAPES.iter().any(|&[x0, y0, x1, y1, r]| inside_rounded(x, y, x0, y0, x1, y1, r)) {
+                    if STROKES.iter().any(|&[x0, y0, x1, y1, width]| on_stroke(x, y, x0, y0, x1, y1, width)) {
                         hits += 1;
                     }
                 }
@@ -128,10 +132,11 @@ fn mark_pixels(size: u32) -> Vec<u8> {
     out
 }
 
-fn inside_rounded(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> bool {
-    let cx = x.clamp(x0 + r, x1 - r);
-    let cy = y.clamp(y0 + r, y1 - r);
-    (x - cx).powi(2) + (y - cy).powi(2) <= r * r
+fn on_stroke(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> bool {
+    let (dx, dy) = (x1 - x0, y1 - y0);
+    let along = (((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+    let (cx, cy) = (x0 + along * dx, y0 + along * dy);
+    (x - cx).powi(2) + (y - cy).powi(2) <= (width / 2.0).powi(2)
 }
 
 #[cfg(test)]

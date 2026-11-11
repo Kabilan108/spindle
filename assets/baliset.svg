@@ -1,7 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#151412"/>
-  <g fill="none" stroke="#e8b25c" stroke-width="5" stroke-linecap="round">
-    <path d="M18 16h28M22 26h20M22 38h20M18 48h28"/>
-    <path d="M32 16v32" stroke-width="4"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Baliset: Ninefold">
+<title>Baliset: Ninefold</title>
+
+<rect x="8" y="8" width="240" height="240" rx="53" fill="#211C17"/>
+<path d="M63 56V197H201" fill="none" stroke="#936538" stroke-width="13" stroke-linejoin="round" stroke-linecap="round"/>
+<g fill="none" stroke="#E8B45A" stroke-width="5" stroke-linecap="round">
+<path d="M72 61L72 178M86 69L85 178M100 77L98 178M114 85L111 178M128 93L124 178M142 101L137 178M156 109L150 178M170 117L163 178M184 125L176 178"/>
+</g>
+<path d="M64 49L201 128L191 144L57 65Z" fill="#F1CD8B"/>
+<path d="M64 187H187" stroke="#E8B45A" stroke-width="11" stroke-linecap="round"/>
+
 </svg>

@@ -84,8 +84,8 @@ pub static LIBRARY: Icon = line(
     "baliset-library",
     r#"<path d="M5 4.5v15M9.5 4.5v15M14 5.5l4.5 13.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>"#,
 );
-/// Baliset's mark: a spool seen from the side, two flanges and the thread between.
+/// Baliset's mark: a zither frame with a sloping head and its strings.
 pub static MARK: Icon = line(
     "baliset-mark",
-    r#"<rect x="4" y="3" width="16" height="3.2" rx="1.6" fill="currentColor"/><rect x="4" y="17.8" width="16" height="3.2" rx="1.6" fill="currentColor"/><path d="M8 8.6h8M8 12h8M8 15.4h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>"#,
+    r#"<path d="M4.2 3.9V20h16M4.2 3.9l15.6 8.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.1 6.4V17M10.1 8V17M13.1 9.6V17M16.1 11.2V17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>"#,
 );
