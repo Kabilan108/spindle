@@ -6,6 +6,7 @@
 
 mod auth;
 mod catalog;
+pub(super) mod check;
 mod http;
 mod library;
 mod wire;
