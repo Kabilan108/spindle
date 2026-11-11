@@ -1,8 +1,8 @@
-# Spindle test VM
+# Baliset test VM
 
 A headless QEMU/KVM guest that runs Tony's desktop from `~/dotfiles`: the same niri
 build and `config.kdl`, the stillsuit shell with its tray and audio/media panel, and
-home-manager's desktop modules. Use it to launch Spindle, screenshot it, and click and
+home-manager's desktop modules. Use it to launch Baliset, screenshot it, and click and
 type into it from a shell with no display.
 
 Everything runs from this directory. State (disk image, throwaway SSH key, QMP socket,
@@ -47,7 +47,7 @@ Logs inside the guest: `vm/run journalctl --user -u niri`,
 `vm/run journalctl --user -u stillsuit-shell`. The serial console is in
 `.state/console.log`.
 
-## Running a host-built Spindle
+## Running a host-built Baliset
 
 The guest mounts the host's `/nix/store` and this project, read-only, at the same
 paths. A binary built on the host runs by path. A `cargo build` binary dlopens its
@@ -57,7 +57,7 @@ pass the dev shell's `LD_LIBRARY_PATH`:
 ```sh
 nix develop -c cargo build
 vm/spawn -E "LD_LIBRARY_PATH=$(nix develop -c printenv LD_LIBRARY_PATH)" \
-  spindle target/debug/spindle --demo
+  baliset target/debug/baliset --demo
 ```
 
 If you don't, winit panics with "The wayland library could not be loaded". A `nix
@@ -87,7 +87,7 @@ so dotfiles edits are picked up on the next `vm/up`. It reuses:
   removed and a fallback to the card's render node (`guest.nix`). The first build of it
   takes about 8 minutes, and later boots reuse it.
 - **`host.kdl`** is VM-specific: one `Virtual-1` output at 1920x1080, scale 1, the same
-  wallpaper as sietch, and the Spindle mini-player rule (`niri-spindle-rule.kdl`). The
+  wallpaper as sietch. The
   sietch-only `debug { disable-pipewire-dmabuf }` is dropped.
 - **Login:** greetd starts `niri-session` as kabilan with no prompt. The real machine
   logs in on tty1 and starts niri by hand. Both end in the same systemd user session.
@@ -105,21 +105,12 @@ so dotfiles edits are picked up on the next `vm/up`. It reuses:
   (pasystray, a StatusNotifierItem app), mpv with its MPRIS script, playerctl, foot,
   vulkan-tools, mesa-demos, grim and wtype.
 
-## Spindle mini-player rule
-
-`niri-spindle-rule.kdl` floats windows with app-id `spindle` and title `Spindle Mini
-Player`, 32 px in from the bottom-right corner, and keeps focus where it was. niri
-matches `open-*` rules when a window first maps, so the window needs that title before
-its first commit. Changing the title afterwards does not float it. To propose the rule
-for the real desktop, paste the file into `config.kdl` next to the "Stillsuit Agent"
-rule.
-
 ## Notes
 
 - Tray icons given by theme name (`IconName`, e.g. pasystray's `audio-volume-high`)
   draw as Qt's missing-icon checkerboard, because stillsuit's Qt has no icon theme set.
   The host's session environment has the same setup, so this is probably true on the
-  real desktop as well. Spindle's pixmap icon draws correctly.
+  real desktop as well. Baliset's pixmap icon draws correctly.
 - Left-clicking a tray item makes stillsuit call `org.kde.StatusNotifierItem.Activate`.
   Right-clicking opens the item's DBusMenu in a stillsuit panel.
 - Resources: 8 vCPUs, 8 GiB RAM, an 8 GiB qcow2 disk, user-mode networking. Change

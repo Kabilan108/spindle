@@ -205,7 +205,7 @@ impl Library {
         lock(&self.catalog).clone().ok_or_else(|| "Not connected to Spotify".to_owned())
     }
 
-    /// Last run's recents, so the mini player has something to offer before the network does.
+    /// Last run's recents, so Home has something to offer before the network does.
     pub(super) fn restore_recents(&self) {
         let Ok(saved) = std::fs::read(&self.recents_path) else { return };
         let Ok(value) = serde_json::from_slice::<Value>(&saved) else { return };
@@ -485,7 +485,7 @@ impl Library {
                 ContextKind::Album => self.load_album(&catalog, &uri).await,
                 ContextKind::Artist => self.load_artist(&catalog, &uri).await,
                 ContextKind::Liked => self.load_liked(&catalog).await,
-                ContextKind::Show | ContextKind::Other => Err("Spindle can't open this yet".to_owned()),
+                ContextKind::Show | ContextKind::Other => Err("Baliset can't open this yet".to_owned()),
             },
             Err(offline) => Err(offline),
         };

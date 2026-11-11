@@ -417,6 +417,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "baliset"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "env_logger",
+ "form_urlencoded",
+ "futures-util",
+ "getrandom 0.3.4",
+ "http",
+ "http-body-util",
+ "librespot-connect",
+ "librespot-core",
+ "librespot-metadata",
+ "librespot-playback",
+ "librespot-protocol",
+ "log",
+ "open",
+ "png 0.18.1",
+ "protobuf",
+ "rune",
+ "rune-kit",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "zbus 6.2.1",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4683,36 +4713,6 @@ name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
-
-[[package]]
-name = "spindle"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "env_logger",
- "form_urlencoded",
- "futures-util",
- "getrandom 0.3.4",
- "http",
- "http-body-util",
- "librespot-connect",
- "librespot-core",
- "librespot-metadata",
- "librespot-playback",
- "librespot-protocol",
- "log",
- "open",
- "png 0.18.1",
- "protobuf",
- "rune",
- "rune-kit",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "zbus 6.2.1",
-]
 
 [[package]]
 name = "spinning_top"

@@ -7,7 +7,7 @@ out=${1:?output directory}
 shift || true
 mkdir -p "$out"
 cargo build --release --quiet
-bin=target/release/spindle-viz
+bin=target/release/baliset-viz
 concepts=(
   "01 groundline mini"
   "02 trace mini"

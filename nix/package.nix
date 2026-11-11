@@ -30,7 +30,7 @@ let
   ];
 in
 rustPlatform.buildRustPackage {
-  pname = "spindle";
+  pname = "baliset";
   version = "0.1.0";
 
   src = lib.fileset.toSource {
@@ -56,14 +56,14 @@ rustPlatform.buildRustPackage {
 
   cargoBuildFlags = [
     "--bin"
-    "spindle"
+    "baliset"
   ];
   doCheck = false;
 
   postInstall = ''
-    wrapProgram $out/bin/spindle --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath runtimeLibs}
-    install -Dm644 assets/spindle.desktop $out/share/applications/spindle.desktop
-    install -Dm644 assets/spindle.svg $out/share/icons/hicolor/scalable/apps/spindle.svg
+    wrapProgram $out/bin/baliset --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath runtimeLibs}
+    install -Dm644 assets/baliset.desktop $out/share/applications/baliset.desktop
+    install -Dm644 assets/baliset.svg $out/share/icons/hicolor/scalable/apps/baliset.svg
   '';
 
   passthru = { inherit runtimeLibs; };
@@ -71,7 +71,7 @@ rustPlatform.buildRustPackage {
   meta = {
     description = "A native Spotify client built with Rune";
     license = lib.licenses.mit;
-    mainProgram = "spindle";
+    mainProgram = "baliset";
     platforms = lib.platforms.linux;
   };
 }

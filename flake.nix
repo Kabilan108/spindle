@@ -1,5 +1,5 @@
 {
-  description = "Spindle: a native Spotify client built with Rune";
+  description = "Baliset: a native Spotify client built with Rune";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -15,7 +15,7 @@
     in
     {
       overlays.default = final: _: {
-        spindle = final.callPackage ./nix/package.nix { };
+        baliset = final.callPackage ./nix/package.nix { };
       };
 
       packages = forAllSystems (pkgs: {
@@ -25,7 +25,7 @@
       devShells = forAllSystems (
         pkgs:
         let
-          spindle = pkgs.callPackage ./nix/package.nix { };
+          baliset = pkgs.callPackage ./nix/package.nix { };
         in
         {
           default = pkgs.mkShell {
@@ -37,8 +37,8 @@
               rust-analyzer
               pkg-config
             ];
-            buildInputs = spindle.runtimeLibs;
-            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath spindle.runtimeLibs;
+            buildInputs = baliset.runtimeLibs;
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath baliset.runtimeLibs;
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           };
         }

@@ -2965,7 +2965,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spindle-viz"
+name = "baliset-viz"
 version = "0.1.0"
 dependencies = [
  "rune",

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Spindle
+Name=Baliset
 GenericName=Music Player
 Comment=A fast native Spotify client
-Exec=spindle
-Icon=spindle
+Exec=baliset
+Icon=baliset
 Categories=AudioVideo;Audio;Player;
-StartupWMClass=spindle
+StartupWMClass=baliset

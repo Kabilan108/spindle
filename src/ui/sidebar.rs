@@ -42,7 +42,7 @@ pub fn view(s: &Main, p: Palette) -> El {
         .center_y()
         .window_drag()
         .child(icon(&icons::MARK, 18.0).color(p.accent))
-        .child(text("Spindle").font(font::BRAND).color(p.text));
+        .child(text("Baliset").font(font::BRAND).color(p.text));
     let nav = col()
         .key("nav")
         .px(8.0)

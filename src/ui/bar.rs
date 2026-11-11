@@ -206,7 +206,6 @@ fn extras(s: &Main, p: Palette, f: &Facts) -> El {
         .gap(6.0)
         .center_y()
         .justify_end()
-        .child(icon_button("open-mini", "Mini player", &icons::MINI, 32.0, p.muted, p).on_press(|s: &mut Main| s.open_mini()))
         .child(
             icon_button("mute", if f.volume <= 0.0 { "Unmute" } else { "Mute" }, volume_glyph, 32.0, p.muted, p)
                 .on_press(|s: &mut Main| s.volume.toggle_mute(&s.link)),

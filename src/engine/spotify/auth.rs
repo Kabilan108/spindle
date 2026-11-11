@@ -37,9 +37,9 @@ const SCOPES: &[&str] = &[
     "user-top-read",
 ];
 
-const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Spindle</title>\
+const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Baliset</title>\
 <body style=\"font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh;margin:0\">\
-<p>Signed in. You can close this tab and go back to Spindle.</p>";
+<p>Signed in. You can close this tab and go back to Baliset.</p>";
 
 
 /// A sign-in in progress: the page to open and the loopback listener its redirect lands on.

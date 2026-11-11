@@ -2,7 +2,7 @@
 //! commands on stdin. For checking sign-in, the Connect device and the library by hand.
 //!
 //! ```sh
-//! cargo run --features spotify --bin spindle-engine
+//! cargo run --features spotify --bin baliset-engine
 //! login | play | next | prev | seek MS | vol 0.5 | shuffle on|off
 //! ctx URI [TRACK_URI] | load URI | search WORDS | like URI | unlike URI | refresh | state | logout | quit
 //! ```

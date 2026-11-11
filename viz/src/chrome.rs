@@ -1,4 +1,4 @@
-//! The parts of Spindle the concepts sit in: the mini player and the main window, rebuilt from
+//! The parts of Baliset the concepts sit in: the mini player and the main window, rebuilt from
 //! `src/ui/mini.rs`, `bar.rs`, `sidebar.rs` and `home.rs` closely enough to judge the concepts in
 //! place. Nothing here is interactive.
 
@@ -139,7 +139,7 @@ pub fn sidebar(s: &State, p: Palette, home: bool) -> El {
                 .gap(10.0)
                 .center_y()
                 .child(icon(&icons::MARK, 18.0).color(p.accent))
-                .child(text("Spindle").font(font::BRAND).color(p.text)),
+                .child(text("Baliset").font(font::BRAND).color(p.text)),
         )
         .child(
             col()

@@ -37,7 +37,7 @@ if [ "$keep_disk" = 0 ]; then
 fi
 rm -rf "$STATE/ssh" "$STATE/tmp" "$QMP_SOCK"
 mkdir -p "$STATE/ssh" "$STATE/tmp"
-"$TOOLS/ssh-keygen" -q -t ed25519 -N '' -C spindle-vm-throwaway -f "$SSH_KEY"
+"$TOOLS/ssh-keygen" -q -t ed25519 -N '' -C baliset-vm-throwaway -f "$SSH_KEY"
 
 port=$("$TOOLS/python3" -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 echo "$port" >"$PORT_FILE"
@@ -47,7 +47,7 @@ run_script=$(echo "$STATE"/vm/bin/run-*-vm)
 (
   export NIX_DISK_IMAGE="$STATE/disk.qcow2"
   export USE_TMPDIR=1 TMPDIR="$STATE/tmp"
-  export SPINDLE_PROJECT_DIR="$PROJECT_DIR"
+  export BALISET_PROJECT_DIR="$PROJECT_DIR"
   export QEMU_NET_OPTS="hostfwd=tcp:127.0.0.1:$port-:22"
   export QEMU_OPTS="-qmp unix:$QMP_SOCK,server=on,wait=off -smbios type=11,value=io.systemd.credential.binary:vm.ssh.authorized_keys=$pubkey_b64"
   exec setsid "$run_script" </dev/null >"$STATE/console.log" 2>&1

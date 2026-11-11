@@ -28,7 +28,7 @@ let
   '';
 in
 {
-  networking.hostName = "spindle-vm";
+  networking.hostName = "baliset-vm";
   system.stateVersion = "25.11";
 
   virtualisation = {
@@ -43,7 +43,7 @@ in
       "-device virtio-gpu-pci,xres=1920,yres=1080"
     ];
     sharedDirectories.project = {
-      source = ''''${SPINDLE_PROJECT_DIR:-${projectDir}}'';
+      source = ''''${BALISET_PROJECT_DIR:-${projectDir}}'';
       target = projectDir;
       writable = false;
     };

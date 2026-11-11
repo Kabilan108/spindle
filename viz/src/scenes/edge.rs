@@ -1,6 +1,6 @@
 //! 05 Edge light: the now-playing bar's top edge carries a line of light in the cover's colours
 //! that brightens with loudness, with a faint bloom rising into the page; next to the title the
-//! Spindle mark's three threads move with bass, mids and treble, and at rest settle back into the
+//! Baliset mark's three threads move with bass, mids and treble, and at rest settle back into the
 //! mark. Live opacity and live rects only.
 
 use std::f32::consts::FRAC_PI_2;
@@ -13,7 +13,7 @@ use crate::theme::Palette;
 use crate::{State, publish};
 
 const MARK: f32 = 16.0;
-/// The mark's own thread length at this size: at rest the glyph is exactly the Spindle mark.
+/// The mark's own thread length at this size: at rest the glyph is exactly the Baliset mark.
 const THREAD_REST: f32 = 6.6;
 
 fn spool(s: &State, p: Palette) -> El {

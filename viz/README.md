@@ -1,6 +1,6 @@
-# Spindle visualization lab
+# Baliset visualization lab
 
-Animated mockups of music visualizations for Spindle. It's a standalone crate, not part of the app or its workspace. Each concept is a Rune scene driven by a simulated audio signal and rendered headlessly with Rune's own `--snap` and `--video` tooling.
+Animated mockups of music visualizations for Baliset. It's a standalone crate, not part of the app or its workspace. Each concept is a Rune scene driven by a simulated audio signal and rendered headlessly with Rune's own `--snap` and `--video` tooling.
 
 ## Render
 
@@ -17,7 +17,7 @@ nix develop -c viz/render.sh OUT_DIR stage aura                   # only some sc
 One scene by hand (run inside `viz/`):
 
 ```sh
-B=target/release/spindle-viz
+B=target/release/baliset-viz
 $B --scene groundline --snap g.png --at 7 --scale 2                       # mini scenes are 380×208
 $B --scene stage --size 1100x720 --scale 2 --fps 60 --duration 11 --video stage.mp4
 ```
@@ -29,7 +29,7 @@ Every scene follows the same script. The track plays from 0:50: one bar of verse
 ## Layout
 
 - `src/signal.rs`: the stand-in for audio analysis. `BandSource` is the seam a real implementation replaces: band powers per FFT hop from librespot's decoded PCM. `SimTrack` synthesizes those powers for a 120 BPM track. `Analyzer` does smoothing, normalization, bass/mid/treble, loudness and onset detection, and is the code the app would keep.
-- `src/art.rs`: generated covers, and `ArtPalette`, which runs k-means in OKLab over a cover thumbnail and clamps the colours so they stay readable on Spindle's dark surfaces.
+- `src/art.rs`: generated covers, and `ArtPalette`, which runs k-means in OKLab over a cover thumbnail and clamps the colours so they stay readable on Baliset's dark surfaces.
 - `src/chrome.rs`: the mini player and main window, rebuilt from `src/ui/*` closely enough to judge the concepts in place.
 - `src/gfx.rs`: the compositor that turns `El::effect` slots into rune-fx layers.
 - `src/scenes/*.rs`: one module per concept.

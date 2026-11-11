@@ -1,4 +1,4 @@
-//! Spindle visualization lab: one scene per concept, driven by a simulated audio signal and
+//! Baliset visualization lab: one scene per concept, driven by a simulated audio signal and
 //! rendered headlessly by Rune's own tooling. See README.md for the commands.
 
 mod art;
@@ -186,7 +186,7 @@ fn main() {
             }),
         ],
         poll: Some(poll),
-        ..AppSpec::new("Spindle viz lab", chrome::MINI_SIZE, init, view)
+        ..AppSpec::new("Baliset viz lab", chrome::MINI_SIZE, init, view)
     })
     .compositor(gfx::Gfx::default());
     app.run();

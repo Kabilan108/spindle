@@ -13,6 +13,7 @@ mod wire;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -57,7 +58,22 @@ impl Dirs {
     fn resolve() -> Self {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let base = |var: &str, fallback: &str| std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home.join(fallback));
-        Self { data: base("XDG_DATA_HOME", ".local/share").join("spindle"), cache: base("XDG_CACHE_HOME", ".cache").join("spindle") }
+        let dirs = Self { data: base("XDG_DATA_HOME", ".local/share").join("baliset"), cache: base("XDG_CACHE_HOME", ".cache").join("baliset") };
+        dirs.adopt("spindle");
+        dirs
+    }
+
+    /// Carries the sign-in and cache over from the app's earlier name, once.
+    fn adopt(&self, earlier: &str) {
+        for dir in [&self.data, &self.cache] {
+            let old = dir.with_file_name(earlier);
+            if !dir.exists()
+                && old.is_dir()
+                && let Err(error) = std::fs::rename(&old, dir)
+            {
+                log::warn!("could not move {} to {}: {error}", old.display(), dir.display());
+            }
+        }
     }
 
     fn credentials(&self) -> PathBuf {
@@ -97,12 +113,12 @@ impl Backend for Spotify {
 }
 
 pub(super) fn start(shared: Arc<Shared>) -> std::io::Result<Arc<dyn Backend>> {
-    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("spindle-engine").enable_all().build()?;
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("baliset-engine").enable_all().build()?;
     let (commands, receiver) = unbounded_channel();
     let http = Arc::new(Http::new());
     let (handle, session_shared, session_http) = (runtime.handle().clone(), shared.clone(), http.clone());
     // The Connect device's task isn't `Send`, so the session gets a thread of its own.
-    std::thread::Builder::new().name("spindle-session".into()).spawn(move || {
+    std::thread::Builder::new().name("baliset-session".into()).spawn(move || {
         handle.block_on(run(session_shared, receiver, session_http));
     })?;
     Ok(Arc::new(Spotify { commands, runtime, http, shared, image_slots: Arc::new(Semaphore::new(CONCURRENT_IMAGES)) }))
@@ -136,7 +152,23 @@ struct Connected {
 
 fn device_name() -> String {
     let host = std::fs::read_to_string("/etc/hostname").ok().map(|name| name.trim().to_owned()).filter(|name| !name.is_empty());
-    host.map_or_else(|| "Spindle".to_owned(), |host| format!("Spindle ({host})"))
+    host.map_or_else(|| "Baliset".to_owned(), |host| format!("Baliset ({host})"))
+}
+
+/// Hands `url` to the desktop's browser. The library path this process may carry is its own
+/// business: a browser started with it can fail to load.
+fn open_browser(url: &str) {
+    let mut commands = open::commands(url);
+    std::thread::spawn(move || {
+        for command in &mut commands {
+            match command.env_remove("LD_LIBRARY_PATH").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
+                Ok(status) if status.success() => return,
+                Ok(status) => log::warn!("{:?} could not open the sign-in page: {status}", command.get_program()),
+                Err(error) => log::warn!("{:?} could not open the sign-in page: {error}", command.get_program()),
+            }
+        }
+        log::error!("no way to open a browser; copy the sign-in link instead");
+    });
 }
 
 fn device_id(path: &Path) -> String {
@@ -371,8 +403,7 @@ async fn sign_in(shared: &Shared, commands: &mut UnboundedReceiver<Command>, htt
         };
         log::info!("sign in at {}", login.url);
         shared.update(|store| store.session = SessionState::NeedsLogin { url: Some(login.url.clone()), error: None });
-        // Without a browser to open, the URL on screen is the way in.
-        drop(open::that_in_background(&login.url));
+        open_browser(&login.url);
         let finish = login.finish(http);
         tokio::pin!(finish);
         loop {

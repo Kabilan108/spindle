@@ -42,7 +42,7 @@ fn playing(s: &mut Main) {
 
 fn sign_in(s: &mut Main) {
     s.preview_session = Some(SessionState::NeedsLogin {
-        url: Some("https://accounts.spotify.com/authorize?response_type=code&client_id=spindle-demo&redirect_uri=http%3A%2F%2F127.0.0.1%3A8898%2Flogin&scope=streaming&state=f3k9".into()),
+        url: Some("https://accounts.spotify.com/authorize?response_type=code&client_id=baliset-demo&redirect_uri=http%3A%2F%2F127.0.0.1%3A8898%2Flogin&scope=streaming&state=f3k9".into()),
         error: Some("The sign-in page didn't answer in time. Try again.".into()),
     });
 }

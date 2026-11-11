@@ -12,7 +12,7 @@ use zbus::{ObjectPath, OwnedVariant, Variant};
 use crate::engine::Engine;
 use crate::model::{Command, Playback, Repeat, Track};
 
-const BUS_NAME: &str = "org.mpris.MediaPlayer2.spindle";
+const BUS_NAME: &str = "org.mpris.MediaPlayer2.baliset";
 const OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
 const NO_TRACK: &str = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
 
@@ -46,11 +46,11 @@ impl Root {
     }
     #[zbus(property)]
     fn identity(&self) -> &str {
-        "Spindle"
+        "Baliset"
     }
     #[zbus(property)]
     fn desktop_entry(&self) -> &str {
-        "spindle"
+        "baliset"
     }
     #[zbus(property)]
     fn supported_uri_schemes(&self) -> Vec<String> {
@@ -64,7 +64,7 @@ impl Root {
 
 fn track_path(track: Option<&Track>) -> String {
     let id = track.and_then(|track| track.uri.rsplit(':').next()).filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric()));
-    id.map_or_else(|| NO_TRACK.to_owned(), |id| format!("/org/spindle/track/{id}"))
+    id.map_or_else(|| NO_TRACK.to_owned(), |id| format!("/org/baliset/track/{id}"))
 }
 
 fn variant<'a>(value: impl Into<Variant<'a>>) -> Option<OwnedVariant> {
@@ -335,7 +335,7 @@ async fn serve(engine: Engine, raise: Hook, quit: Hook) -> zbus::Result<()> {
 /// Publish the player on the session bus. `raise` shows the main window; `quit` ends the app.
 pub fn start(engine: Engine, raise: impl Fn() + Send + Sync + 'static, quit: impl Fn() + Send + Sync + 'static) {
     let (raise, quit): (Hook, Hook) = (Arc::new(raise), Arc::new(quit));
-    let spawned = std::thread::Builder::new().name("spindle-mpris".into()).spawn(move || {
+    let spawned = std::thread::Builder::new().name("baliset-mpris".into()).spawn(move || {
         let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
             Ok(runtime) => runtime,
             Err(error) => {
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn nothing_playing_is_the_no_track_path() {
         assert_eq!(track_path(None), NO_TRACK);
-        assert_eq!(track_path(Some(&track())), "/org/spindle/track/4uLU6hMCjMI75M1A2tKUQC");
+        assert_eq!(track_path(Some(&track())), "/org/baliset/track/4uLU6hMCjMI75M1A2tKUQC");
         assert_eq!(metadata(None).len(), 1);
     }
 

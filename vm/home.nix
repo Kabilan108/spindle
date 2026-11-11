@@ -31,9 +31,9 @@
 
     dotfiles.wallpaper.lockscreen = "$HOME/dotfiles/wallpapers/uwide/lucy.png";
 
-    # Replaces hosts/sietch.kdl: one virtio-gpu output, and the Spindle rule.
+    # Replaces hosts/sietch.kdl: one virtio-gpu output.
     xdg.configFile."niri/host.kdl".source = lib.mkForce (
-      pkgs.writeText "niri-host-spindle-vm.kdl" ''
+      pkgs.writeText "niri-host-baliset-vm.kdl" ''
         output "Virtual-1" {
             mode "1920x1080"
             scale 1
@@ -41,8 +41,6 @@
         }
 
         spawn-sh-at-startup "swaybg -i $HOME/dotfiles/wallpapers/uwide/lucy.png -m fill"
-
-        ${builtins.readFile ./niri-spindle-rule.kdl}
       ''
     );
 

@@ -1,4 +1,4 @@
-//! Spindle's windows: the main window, the mini player, and what they share.
+//! Baliset's windows: the main window and what it is built from.
 
 mod art;
 mod bar;
@@ -6,7 +6,6 @@ mod home;
 pub mod icons;
 mod link;
 mod meter;
-pub mod mini;
 mod page;
 mod scenes;
 mod search;
@@ -24,7 +23,6 @@ use std::time::Duration;
 use rune::{AppHandle, Chord, Cx, El, Key, KeyEvent, TextEdit, Tx, Waker, col, el, row};
 
 pub use link::Link;
-pub use mini::Mini;
 pub use scenes::MAIN_SCENES;
 
 use crate::model::{Command, LIKED_URI, Loadable, Repeat, SessionState};
@@ -35,7 +33,7 @@ use theme::Palette;
 /// A named state for headless snapshots.
 pub type Scene<S> = (&'static str, fn(&mut S));
 
-pub const MAIN_TITLE: &str = "Spindle";
+pub const MAIN_TITLE: &str = "Baliset";
 pub const MAIN_SIZE: (f32, f32) = (1100.0, 720.0);
 pub const MAIN_MIN: (f32, f32) = (860.0, 560.0);
 
@@ -72,7 +70,6 @@ pub struct Main {
     /// The selected row of the page on screen.
     pub selected: Option<usize>,
     me: Option<AppHandle<Main>>,
-    mini: Option<AppHandle<Mini>>,
     /// Headless scenes show session states the demo engine never reaches.
     pub preview_session: Option<SessionState>,
     dark: Cell<bool>,
@@ -96,7 +93,6 @@ impl Main {
             volume,
             selected: None,
             me: None,
-            mini: None,
             preview_session: None,
             dark: Cell::new(true),
             home: Cell::new(HomeGrid::default()),
@@ -104,10 +100,9 @@ impl Main {
         }
     }
 
-    /// This window's own handle (for visibility) and the mini player's.
-    pub fn with_handles(mut self, me: AppHandle<Main>, mini: AppHandle<Mini>) -> Self {
+    /// This window's own handle, for visibility.
+    pub fn with_handle(mut self, me: AppHandle<Main>) -> Self {
         self.me = Some(me);
-        self.mini = Some(mini);
         self
     }
 
@@ -182,12 +177,6 @@ impl Main {
 
     pub fn set_liked(&self, uri: &str, liked: bool) {
         self.link.send(Command::SetLiked { uri: uri.to_owned(), liked });
-    }
-
-    pub fn open_mini(&self) {
-        if let Some(mini) = &self.mini {
-            mini::show(mini, None);
-        }
     }
 
     fn search_changed(&mut self, tx: &mut Tx) {

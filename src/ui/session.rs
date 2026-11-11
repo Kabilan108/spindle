@@ -3,7 +3,7 @@
 use rune::{Align, El, Tx, col, icon, row, text};
 
 use super::theme::{Palette, font};
-use super::widgets::{icon_button, pill_button};
+use super::widgets::pill_button;
 use super::{Main, icons};
 use crate::model::Command;
 
@@ -25,53 +25,31 @@ pub fn sign_in(p: Palette, url: Option<&str>, error: Option<&str>) -> El {
         .gap(14.0)
         .items_center()
         .child(icon(&icons::MARK, 40.0).color(p.accent).mb(6.0))
-        .child(text("Sign in to Spindle").font(font::PAGE_TITLE.lh(32.0)).color(p.text))
+        .child(text("Sign in to Baliset").font(font::PAGE_TITLE.lh(32.0)).color(p.text))
         .child(
-            text("Spindle plays music from your Spotify Premium account. Signing in opens your browser.")
+            text("Baliset plays music from your Spotify Premium account. Signing in opens your browser.")
                 .font(font::BODY)
                 .color(p.muted)
                 .align(Align::Center)
                 .wrap(),
         )
         .child(
-            pill_button("sign-in-button", if url.is_some() { "Open the browser again" } else { "Sign in with browser" }, None, true, p)
+            pill_button("sign-in-button", if url.is_some() { "Open the browser again" } else { "Sign in" }, None, true, p)
                 .mt(6.0)
                 .on_press(|s: &mut Main| s.link.send(Command::Login)),
         );
     if let Some(url) = url {
         let copy = url.to_owned();
         card = card.child(
-            col()
+            row()
                 .key("sign-in-url")
-                .w_full()
-                .mt(10.0)
-                .gap(6.0)
-                .child(text("If the browser didn't open, visit this address:").font(font::SMALL).color(p.muted))
+                .mt(4.0)
+                .gap(10.0)
+                .center_y()
+                .child(text("Browser didn't open?").font(font::SMALL).color(p.muted))
                 .child(
-                    row()
-                        .w_full()
-                        .gap(6.0)
-                        .pl(12.0)
-                        .pr(4.0)
-                        .py(4.0)
-                        .center_y()
-                        .radius(8.0)
-                        .fill(p.field)
-                        .child(
-                            text(url.to_owned())
-                                .key("login-url")
-                                .font(font::MONO)
-                                .color(p.text)
-                                .selectable(true)
-                                .wrap_anywhere()
-                                .grow(1.0)
-                                .min_w(0.0)
-                                .py(6.0),
-                        )
-                        .child(
-                            icon_button("copy-url", "Copy address", &icons::COPY, 30.0, p.muted, p)
-                                .on_press_tx(move |_: &mut Main, tx: &mut Tx| tx.copy(copy.clone())),
-                        ),
+                    pill_button("copy-url", "Copy sign-in link", Some(&icons::COPY), false, p)
+                        .on_press_tx(move |_: &mut Main, tx: &mut Tx| tx.copy(copy.clone())),
                 ),
         );
     }

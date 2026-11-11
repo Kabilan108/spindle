@@ -1,4 +1,4 @@
-//! Spindle's palette and type. Neutral greys with a faint warmth, one brass accent; album art
+//! Baliset's palette and type. Neutral greys with a faint warmth, one brass accent; album art
 //! carries the rest of the colour.
 
 use rune::{Color, Spring, TextStyle, oklch, oklcha};
@@ -104,7 +104,6 @@ pub mod font {
     pub const BUTTON: TextStyle = TextStyle::new(13.0, 600.0).lh(18.0);
     pub const TIME: TextStyle = TextStyle::new(11.5, 500.0).lh(14.0).features("'tnum' 1");
     pub const NUMBER: TextStyle = TextStyle::new(12.5, 400.0).lh(16.0).features("'tnum' 1");
-    pub const MONO: TextStyle = TextStyle::new(12.0, 400.0).lh(17.0).mono();
 }
 
 /// State changes land on this: quick, no bounce.

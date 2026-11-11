@@ -1,5 +1,5 @@
 {
-  description = "Headless QEMU VM running Tony's niri + stillsuit desktop, for driving Spindle from the host";
+  description = "Headless QEMU VM running Tony's niri + stillsuit desktop, for driving Baliset from the host";
 
   # git+file reads the dotfiles working tree the way `nixos-rebuild --flake` does,
   # so the VM sees the same nixpkgs lock, niri, stillsuit and config.kdl.
@@ -62,7 +62,7 @@
 
       # Host-side tools the scripts in this directory run.
       tools = pkgs.buildEnv {
-        name = "spindle-vm-tools";
+        name = "baliset-vm-tools";
         paths = [
           pkgs.python3
           pkgs.openssh
@@ -72,7 +72,7 @@
       };
     in
     {
-      nixosConfigurations.spindle-vm = vm;
+      nixosConfigurations.baliset-vm = vm;
       packages.${system} = {
         vm = vm.config.system.build.vm;
         inherit tools;

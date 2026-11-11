@@ -1,6 +1,6 @@
 //! Copied from `src/ui/theme.rs`: the lab draws in the app's own palette and type.
 
-//! Spindle's palette and type. Neutral greys with a faint warmth, one brass accent; album art
+//! Baliset's palette and type. Neutral greys with a faint warmth, one brass accent; album art
 //! carries the rest of the colour.
 
 use rune::{Color, Spring, TextStyle, oklch, oklcha};

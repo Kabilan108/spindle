@@ -1,26 +1,26 @@
-//! The tray icon (StatusNotifierItem on Linux). A primary click toggles the mini player; the
-//! menu opens windows and drives playback. Its tooltip follows the playing track.
+//! The tray icon (StatusNotifierItem on Linux). A primary click shows or hides the main window;
+//! the menu drives playback. Its tooltip follows the playing track.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rune::{AppHandle, Tray, TrayEvent, TrayIcon, TrayItem, TraySpec};
 
 use crate::model::{Command, Store};
-use crate::ui::{Link, Main, Mini};
+use crate::ui::{Link, Main};
 
 const SIZE: u32 = 64;
 
 /// Starts the tray on its own thread, so a slow session bus never holds up a frame. Without a
 /// tray (no bus, no host) the app carries on.
-pub fn start(link: Link, main: AppHandle<Main>, mini: AppHandle<Mini>) {
-    let spawned = std::thread::Builder::new().name("spindle-tray".into()).spawn(move || {
+pub fn start(link: Link, main: AppHandle<Main>) {
+    let spawned = std::thread::Builder::new().name("baliset-tray".into()).spawn(move || {
         let (tip, playing) = link.read(|store| (tooltip(store), store.playback.playing));
-        let spec = TraySpec::new("spindle", "Spindle", icon()).tooltip(tip.clone()).menu(menu(playing));
+        let spec = TraySpec::new("baliset", "Baliset", icon()).tooltip(tip.clone()).menu(menu(playing));
         let events = link.clone();
-        let tray = match Tray::new(spec, move |event| on_event(&events, &main, &mini, event)) {
+        let tray = match Tray::new(spec, move |event| on_event(&events, &main, event)) {
             Ok(tray) => Arc::new(tray),
             Err(error) => {
-                eprintln!("spindle: no tray icon: {error}");
+                eprintln!("baliset: no tray icon: {error}");
                 return;
             }
         };
@@ -40,7 +40,7 @@ pub fn start(link: Link, main: AppHandle<Main>, mini: AppHandle<Mini>) {
         });
     });
     if let Err(error) = spawned {
-        eprintln!("spindle: no tray icon: {error}");
+        eprintln!("baliset: no tray icon: {error}");
     }
 }
 
@@ -48,14 +48,13 @@ fn tooltip(store: &Store) -> String {
     match &store.playback.track {
         Some(track) if track.artists.is_empty() => track.name.clone(),
         Some(track) => format!("{} — {}", track.name, track.artist_line()),
-        None => "Spindle".into(),
+        None => "Baliset".into(),
     }
 }
 
 fn menu(playing: bool) -> Vec<TrayItem> {
     vec![
-        TrayItem::action("open", "Open Spindle"),
-        TrayItem::action("mini", "Mini Player"),
+        TrayItem::action("open", "Open Baliset"),
         TrayItem::Separator,
         TrayItem::action("play-pause", if playing { "Pause" } else { "Play" }),
         TrayItem::action("next", "Next"),
@@ -65,15 +64,24 @@ fn menu(playing: bool) -> Vec<TrayItem> {
     ]
 }
 
-fn on_event(link: &Link, main: &AppHandle<Main>, mini: &AppHandle<Mini>, event: TrayEvent) {
+fn on_event(link: &Link, main: &AppHandle<Main>, event: TrayEvent) {
     match event {
-        TrayEvent::Activate { token } => crate::ui::mini::toggle(mini, token),
+        TrayEvent::Activate { token } => {
+            if main.is_visible() {
+                main.hide();
+            } else {
+                match token {
+                    Some(token) => main.activate(token),
+                    None => main.open(),
+                }
+                main.update(|m, tx| m.resume(tx));
+            }
+        }
         TrayEvent::Menu(id) => match id.as_str() {
             "open" => {
                 main.open();
                 main.update(|m, tx| m.resume(tx));
             }
-            "mini" => crate::ui::mini::show(mini, None),
             "play-pause" => link.send(Command::PlayPause),
             "next" => link.send(Command::Next),
             "previous" => link.send(Command::Previous),
@@ -84,7 +92,7 @@ fn on_event(link: &Link, main: &AppHandle<Main>, mini: &AppHandle<Mini>, event: 
     }
 }
 
-/// Spindle's mark, a spool on its side, in the accent's brass, drawn at 4×4 samples a pixel.
+/// Baliset's mark, a spool on its side, in the accent's brass, drawn at 4×4 samples a pixel.
 pub fn icon() -> TrayIcon {
     TrayIcon::rgba(SIZE, SIZE, mark_pixels(SIZE))
 }
@@ -140,7 +148,7 @@ mod tests {
 
     #[test]
     fn the_menu_names_the_next_play_action() {
-        let label = |items: Vec<TrayItem>| match &items[3] {
+        let label = |items: Vec<TrayItem>| match &items[2] {
             TrayItem::Action { label, .. } => label.clone(),
             _ => String::new(),
         };

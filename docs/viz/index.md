@@ -1,4 +1,4 @@
-# Spindle visualization concepts
+# Baliset visualization concepts
 
 Seven concepts: four for the mini player (380×208) and three for the main window (1100×720). Each video is 11 s at 60 fps and 2× scale. The track plays a bar of verse, a four-second build and the drop at 6 s, pauses at 8 s, and the video runs on until 11 s to show the scene settling. `NN-name.png` is a still from the drop and `NN-name-paused.png` is the same scene at rest.
 
@@ -32,7 +32,7 @@ The progress bar becomes the track's loudness trace, drawn as it plays. Each pla
 
 `03-sleeve.mp4`, `03-sleeve.png`
 
-The cover is a record sleeve. On play, a record slides out from behind it and turns at 33⅓ rpm, with the cover as its label. A highlight stays fixed while the record turns under it, which is what makes the spin read. On pause the record eases to a stop over 1.6 s and slides back into the sleeve. It ties straight to the Spindle name and needs nothing the app doesn't already have.
+The cover is a record sleeve. On play, a record slides out from behind it and turns at 33⅓ rpm, with the cover as its label. A highlight stays fixed while the record turns under it, which is what makes the spin read. On pause the record eases to a stop over 1.6 s and slides back into the sleeve. It ties straight to the Baliset name and needs nothing the app doesn't already have.
 
 - **Rune primitives:** `rotate` with `rotate_motion` (see "Hard in Rune" below), layout `motion` springs for the slide, `radial_gradient` grooves, `pixels_fit` label, `linear_gradient` sheen.
 - **Per frame:** no commits while playing. One commit starts a 240 s linear rotation and the renderer turns it; the app re-commits every 4 minutes. A turned element draws into its own isolated layer, so each frame composites one 60 pt layer.
@@ -54,7 +54,7 @@ The mini player's background is a rune-fx mesh gradient made from deep versions 
 
 `05-edge-light.mp4`, `05-edge-light.png`
 
-The now-playing bar's top border becomes a thin line of light in the cover's colours that brightens with loudness, with a faint bloom rising into the page. Next to the track title, the Spindle mark's three threads stretch with bass, mids and treble. At rest they settle back to the mark's own proportions, so the paused glyph is exactly the logo. This is something to leave on all day.
+The now-playing bar's top border becomes a thin line of light in the cover's colours that brightens with loudness, with a faint bloom rising into the page. Next to the track title, the Baliset mark's three threads stretch with bass, mids and treble. At rest they settle back to the mark's own proportions, so the paused glyph is exactly the logo. This is something to leave on all day.
 
 - **Rune primitives:** `live_opacity` on a `linear_gradient` line and a `radial_gradient` bloom; three `live_rect` threads with smoothing.
 - **Per frame:** no commits. Five live values are published per hop.

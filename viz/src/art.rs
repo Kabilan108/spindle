@@ -149,7 +149,7 @@ impl Cover {
 }
 
 /// Colours derived from a cover. Every UI colour is clamped in OKLCH so it stays readable on
-/// Spindle's dark surfaces whatever the art is.
+/// Baliset's dark surfaces whatever the art is.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtPalette {
     /// The most colourful well-represented swatch, as is.

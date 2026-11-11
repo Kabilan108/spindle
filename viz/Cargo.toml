@@ -1,9 +1,9 @@
 [package]
-name = "spindle-viz"
+name = "baliset-viz"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Spindle visualization lab: animated mockups rendered headlessly"
+description = "Baliset visualization lab: animated mockups rendered headlessly"
 publish = false
 
 # Not a member of the root package's workspace.
