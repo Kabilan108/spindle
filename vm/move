@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Move the pointer to a screen coordinate without clicking (hover).
+# Usage: vm/move X Y
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -eq 2 ] || die "usage: vm/move X Y"
+require_running
+qmp move "$1" "$2"

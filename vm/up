@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Build and boot the VM headless, then wait for niri and the stillsuit bar.
+# Usage: vm/up [--keep-disk] [--timeout SECONDS]
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+keep_disk=0
+timeout=300
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep-disk) keep_disk=1 ;;
+    --timeout) timeout="$2"; shift ;;
+    -h | --help) sed -n '2,3p' "$0"; exit 0 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+  shift
+done
+
+if vm_running; then
+  echo "VM already running (pid $(cat "$PID_FILE"), ssh port $(cat "$PORT_FILE"))"
+  exit 0
+fi
+
+mkdir -p "$STATE"
+start=$(date +%s)
+
+echo "building VM..."
+if ! nix build --no-write-lock-file -o "$STATE/tools" "$VM_DIR#tools" >"$STATE/build.log" 2>&1 ||
+  ! nix build --no-write-lock-file -o "$STATE/vm" "$VM_DIR#vm" >>"$STATE/build.log" 2>&1; then
+  cat "$STATE/build.log" >&2
+  die "nix build failed (log: $STATE/build.log)"
+fi
+built=$(date +%s)
+
+if [ "$keep_disk" = 0 ]; then
+  rm -f "$STATE/disk.qcow2"
+fi
+rm -rf "$STATE/ssh" "$STATE/tmp" "$QMP_SOCK"
+mkdir -p "$STATE/ssh" "$STATE/tmp"
+"$TOOLS/ssh-keygen" -q -t ed25519 -N '' -C spindle-vm-throwaway -f "$SSH_KEY"
+
+port=$("$TOOLS/python3" -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+echo "$port" >"$PORT_FILE"
+pubkey_b64=$(base64 -w0 "$SSH_KEY.pub")
+
+run_script=$(echo "$STATE"/vm/bin/run-*-vm)
+(
+  export NIX_DISK_IMAGE="$STATE/disk.qcow2"
+  export USE_TMPDIR=1 TMPDIR="$STATE/tmp"
+  export SPINDLE_PROJECT_DIR="$PROJECT_DIR"
+  export QEMU_NET_OPTS="hostfwd=tcp:127.0.0.1:$port-:22"
+  export QEMU_OPTS="-qmp unix:$QMP_SOCK,server=on,wait=off -smbios type=11,value=io.systemd.credential.binary:vm.ssh.authorized_keys=$pubkey_b64"
+  exec setsid "$run_script" </dev/null >"$STATE/console.log" 2>&1
+) &
+echo $! >"$PID_FILE"
+
+echo "booting (console: $STATE/console.log)..."
+deadline=$((built + timeout))
+stage="ssh"
+while :; do
+  if ! vm_running; then
+    tail -n 40 "$STATE/console.log" >&2
+    die "QEMU exited during boot"
+  fi
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    die "timed out after ${timeout}s waiting for $stage (console: $STATE/console.log)"
+  fi
+  case "$stage" in
+    ssh)
+      if vm_ssh true 2>/dev/null; then
+        stage="niri"
+        ssh_at=$(date +%s)
+      fi
+      ;;
+    niri)
+      if vm_ssh vm-session-exec niri msg version >/dev/null 2>&1; then
+        stage="stillsuit bar"
+      fi
+      ;;
+    "stillsuit bar")
+      if vm_ssh 'vm-session-exec niri msg -j layers' 2>/dev/null | grep -q '"stillsuit.bar"'; then
+        break
+      fi
+      ;;
+  esac
+  sleep 1
+done
+ready=$(date +%s)
+
+echo "VM up: build $((built - start))s, boot to ssh $((ssh_at - built))s, to stillsuit bar $((ready - built))s"
+echo "ssh: vm/run CMD...  (port $port on 127.0.0.1)"

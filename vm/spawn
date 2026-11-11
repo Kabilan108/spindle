@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Start a long-running app in the guest session as a transient user unit, so it
+# outlives this call. Logs: vm/run journalctl --user -u vm-NAME
+# Stop: vm/run systemctl --user stop vm-NAME
+# Usage: vm/spawn [-E VAR=VALUE]... NAME CMD [ARGS...]
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+env_args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -E) env_args+=("--setenv=$2"); shift 2 ;;
+    *) break ;;
+  esac
+done
+[ $# -ge 2 ] || die "usage: vm/spawn [-E VAR=VALUE]... NAME CMD [ARGS...]"
+name="$1"
+shift
+require_running
+
+cwd="$(guest_cwd)"
+# systemd-run looks commands up in PATH only; anchor relative paths to the cwd.
+case "$1" in
+  /*) ;;
+  */*) set -- "$cwd/$1" "${@:2}" ;;
+esac
+
+vm_ssh "exec vm-session-exec systemd-run --user --collect --quiet \
+  --unit=$(printf '%q' "vm-$name") \
+  --working-directory=$(printf '%q' "$cwd") \
+  $(quote_args "${env_args[@]}") -- $(quote_args "$@")"
+echo "started vm-$name"

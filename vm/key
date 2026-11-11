@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Press key combos on the guest keyboard, one after another. Keys are QEMU
+# qcodes joined by "-": ret, esc, tab, spc, a, f1, ctrl-c, super-a, shift-tab,
+# alt-f4, ctrl-shift-t. "super"/"mod" mean the Logo key (niri's Mod).
+# Usage: vm/key [--hold-ms N] COMBO [COMBO...]
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -ge 1 ] || die "usage: vm/key [--hold-ms N] COMBO [COMBO...]"
+require_running
+qmp key "$@"

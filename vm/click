@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Click at a screen coordinate (pixels, 0..1919 x 0..1079) with the guest's
+# USB tablet.
+# Usage: vm/click [--right|--middle] [--double] X Y
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+button=left
+count=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --right) button=right ;;
+    --middle) button=middle ;;
+    --left) button=left ;;
+    --double) count=2 ;;
+    *) break ;;
+  esac
+  shift
+done
+[ $# -eq 2 ] || die "usage: vm/click [--right|--middle] [--double] X Y"
+require_running
+qmp click --button "$button" --count "$count" "$1" "$2"

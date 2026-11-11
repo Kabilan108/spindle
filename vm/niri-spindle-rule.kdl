@@ -1,0 +1,8 @@
+// Spindle's mini player: a small borderless window that floats in the
+// bottom-right corner and leaves focus where it was.
+window-rule {
+    match app-id=r#"^spindle$"# title=r#"^Spindle Mini Player$"#
+    open-floating true
+    open-focused false
+    default-floating-position x=32 y=32 relative-to="bottom-right"
+}

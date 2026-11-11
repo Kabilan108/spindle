@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Spindle
+GenericName=Music Player
+Comment=A fast native Spotify client
+Exec=spindle
+Icon=spindle
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=spindle

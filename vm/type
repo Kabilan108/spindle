@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Type ASCII text on the guest keyboard (US layout).
+# Usage: vm/type TEXT
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -eq 1 ] || die "usage: vm/type TEXT"
+require_running
+qmp type "$1"

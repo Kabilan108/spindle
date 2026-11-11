@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Scroll the wheel at a screen coordinate.
+# Usage: vm/scroll X Y up|down [STEPS]
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -ge 3 ] || die "usage: vm/scroll X Y up|down [STEPS]"
+require_running
+qmp scroll "$@"

@@ -1,0 +1,10 @@
+{"events": [
+  {"t": 0.30, "type": "double-click", "key": "trk4"},
+  {"t": 0.90, "type": "mark", "name": "played"},
+  {"t": 1.20, "type": "tap", "key": "play-pause"},
+  {"t": 1.60, "type": "mark", "name": "paused"},
+  {"t": 1.80, "type": "drag", "key": "seek", "dx": 160, "dur": 0.4},
+  {"t": 2.60, "type": "mark", "name": "sought"},
+  {"t": 2.80, "type": "move", "key": "trk7"},
+  {"t": 3.30, "type": "mark", "name": "end"}
+]}

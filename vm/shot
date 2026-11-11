@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Save the whole guest screen, as QEMU's display device shows it, to a PNG.
+# Usage: vm/shot OUT.png
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -eq 1 ] || die "usage: vm/shot OUT.png"
+require_running
+
+out="$1"
+mkdir -p "$(dirname "$out")"
+out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+qmp screendump "$out"
+echo "$out"

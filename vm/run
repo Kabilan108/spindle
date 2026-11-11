@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Run a command in the guest's niri session as kabilan and return its exit code.
+# The session environment (WAYLAND_DISPLAY, XDG_RUNTIME_DIR,
+# DBUS_SESSION_BUS_ADDRESS, NIRI_SOCKET, ...) comes from the user manager.
+# A host cwd inside the project is kept (the project is mounted at the same path).
+# Usage: vm/run CMD [ARGS...]
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+[ $# -gt 0 ] || die "usage: vm/run CMD [ARGS...]"
+require_running
+
+tty_flag=()
+[ -t 0 ] && [ -t 1 ] && tty_flag=(-t)
+exec_status=0
+vm_ssh "${tty_flag[@]}" "cd $(printf '%q' "$(guest_cwd)") && exec vm-session-exec $(quote_args "$@")" || exec_status=$?
+exit "$exec_status"

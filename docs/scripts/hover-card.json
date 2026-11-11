@@ -1,0 +1,4 @@
+{"events": [
+  {"t": 0.20, "type": "move", "key": "card:spotify:album:demo2"},
+  {"t": 0.80, "type": "mark", "name": "end"}
+]}
