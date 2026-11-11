@@ -5,9 +5,9 @@ use std::borrow::Cow;
 use rune::{Color, Cursor, El, GrowthSpec, Icon, ScrollSpec, col, el, icon, row, text};
 
 use super::theme::{Palette, SIDEBAR_W, font};
-use super::widgets::{art, fallback_icon};
+use super::widgets::{art, fallback_icon, icon_button};
 use super::{LIKED, Main, Route, icons};
-use crate::model::{ContextKind, Loadable};
+use crate::model::{ContextKind, Loadable, SessionState};
 
 const PLAYLIST_ROW_H: f32 = 36.0;
 
@@ -96,6 +96,31 @@ pub fn view(s: &Main, p: Palette) -> El {
         .child(nav)
         .child(header)
         .child(list)
+        .child(account(s, p))
+}
+
+/// Who is signed in, and the way out. Signing out takes two presses, so a stray click
+/// doesn't stop the music and forget the account.
+fn account(s: &Main, p: Palette) -> El {
+    let user = s.link.read(|store| match &store.session {
+        SessionState::Online { user } => Some(user.clone()),
+        _ => None,
+    });
+    let Some(user) = user else { return el().key("account") };
+    let footer = row().key("account").h(44.0).px(18.0).gap(10.0).center_y();
+    if s.confirming_sign_out {
+        let choice = |key: &str, label: &str, ink: Color| {
+            row().key(key).role("button").label(label).h(26.0).px(10.0).center().radius(13.0).hover(p.hover).press(p.press).cursor(Cursor::Pointer).focusable(true).child(text(label).font(font::SMALL).color(ink))
+        };
+        return footer
+            .child(text("Sign out?").font(font::NAV).color(p.text).grow(1.0).min_w(0.0))
+            .child(choice("sign-out-cancel", "Cancel", p.muted).on_press(|s: &mut Main| s.confirming_sign_out = false))
+            .child(choice("sign-out-confirm", "Sign out", p.accent).on_press(Main::sign_out));
+    }
+    footer
+        .child(icon(&icons::PERSON, 18.0).color(p.muted))
+        .child(text(user).key("account-name").font(font::NAV).color(p.muted).truncate().grow(1.0).min_w(0.0))
+        .child(icon_button("sign-out", "Sign out", &icons::SIGN_OUT, 28.0, p.muted, p).on_press(|s: &mut Main| s.confirming_sign_out = true))
 }
 
 fn quiet(message: &str, p: Palette) -> El {

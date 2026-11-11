@@ -23,7 +23,8 @@ spindle --mini       # start with the mini player showing
 
 The first launch shows a sign-in screen. It opens Spotify's sign-in page in the browser and
 waits for it to come back to `http://127.0.0.1:5588/login`. The saved sign-in lives in
-`~/.local/share/spindle/` (owner-only); delete that folder to sign out. Audio is cached in
+`~/.local/share/spindle/` (owner-only). The sign-out button sits beside your name at the
+bottom of the sidebar. Audio is cached in
 `~/.cache/spindle/audio`, up to 2 GB.
 
 Keys: Space play/pause, Ctrl+L or Ctrl+K search, Ctrl+Left/Right previous/next, Ctrl+W close

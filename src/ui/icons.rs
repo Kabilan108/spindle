@@ -76,6 +76,10 @@ pub static PLAYING: Icon = line(
     "spindle-playing",
     r#"<rect x="4.5" y="9" width="3" height="10" rx="1" fill="currentColor"/><rect x="10.5" y="5" width="3" height="14" rx="1" fill="currentColor"/><rect x="16.5" y="12" width="3" height="7" rx="1" fill="currentColor"/>"#,
 );
+pub static SIGN_OUT: Icon = line(
+    "spindle-sign-out",
+    r#"<path d="M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10M15 8l4 4-4 4M19 12H9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>"#,
+);
 pub static COPY: Icon = line(
     "spindle-copy",
     r#"<rect x="8.5" y="8.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="1.6"/>"#,

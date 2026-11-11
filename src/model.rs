@@ -208,8 +208,6 @@ pub const LIKED_URI: &str = "spotify:collection";
 pub enum Command {
     /// Start the browser sign-in.
     Login,
-    /// Sent by the `spindle-engine` harness; the windows have no sign-out control yet.
-    #[allow(dead_code)]
     Logout,
     PlayPause,
     Next,

@@ -77,6 +77,8 @@ pub struct Main {
     pub preview_session: Option<SessionState>,
     dark: Cell<bool>,
     home: Cell<HomeGrid>,
+    /// The sidebar's sign-out button was pressed once and is asking to be pressed again.
+    pub confirming_sign_out: bool,
 }
 
 impl Main {
@@ -98,6 +100,7 @@ impl Main {
             preview_session: None,
             dark: Cell::new(true),
             home: Cell::new(HomeGrid::default()),
+            confirming_sign_out: false,
         }
     }
 
@@ -142,6 +145,14 @@ impl Main {
             self.route = Route::Context(uri.to_owned());
             self.selected = None;
         }
+    }
+
+    /// Sign out of Spotify on this device: stops playback and forgets the saved sign-in.
+    pub fn sign_out(&mut self) {
+        self.confirming_sign_out = false;
+        self.route = Route::Home;
+        self.selected = None;
+        self.link.send(Command::Logout);
     }
 
     pub fn go_home(&mut self) {
