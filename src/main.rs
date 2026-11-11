@@ -1,6 +1,7 @@
 mod engine;
 mod model;
 mod mpris;
+mod settings;
 mod tray;
 mod ui;
 

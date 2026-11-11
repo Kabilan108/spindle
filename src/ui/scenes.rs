@@ -64,6 +64,19 @@ fn toast(s: &mut Main) {
     s.link.send_and_wait(Command::PlayContext { uri: "spotify:playlist:gone".into(), track_uri: None }, |store| store.notice.is_some());
 }
 
+fn settings(s: &mut Main) {
+    s.settings_open = true;
+}
+
+fn zoomed(s: &mut Main, level: f32) {
+    s.zoom = super::zoom::Zoom::preview(level, false);
+    open(s, "spotify:playlist:demo0");
+}
+
+fn zoom_indicator(s: &mut Main) {
+    s.zoom = super::zoom::Zoom::preview(2.0, true);
+}
+
 pub const MAIN_SCENES: &[Scene<Main>] = &[
     ("home", |_| {}),
     ("playlist", playlist),
@@ -78,4 +91,9 @@ pub const MAIN_SCENES: &[Scene<Main>] = &[
     ("connecting", connecting),
     ("offline", offline),
     ("toast", toast),
+    ("settings", settings),
+    ("zoom-80", |s| zoomed(s, 0.8)),
+    ("zoom-125", |s| zoomed(s, 1.25)),
+    ("zoom-200", |s| zoomed(s, 2.0)),
+    ("zoom-indicator", zoom_indicator),
 ];

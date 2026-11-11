@@ -120,6 +120,7 @@ fn account(s: &Main, p: Palette) -> El {
     footer
         .child(icon(&icons::PERSON, 18.0).color(p.muted))
         .child(text(user).key("account-name").font(font::NAV).color(p.muted).truncate().grow(1.0).min_w(0.0))
+        .child(icon_button("settings", "Settings", &icons::SETTINGS, 28.0, if s.settings_open { p.text } else { p.muted }, p).on_press(|s: &mut Main| s.settings_open = !s.settings_open))
         .child(icon_button("sign-out", "Sign out", &icons::SIGN_OUT, 28.0, p.muted, p).on_press(|s: &mut Main| s.confirming_sign_out = true))
 }
 

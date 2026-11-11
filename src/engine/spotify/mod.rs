@@ -41,6 +41,7 @@ use self::http::Http;
 use self::library::Library;
 use super::{Backend, Shared};
 use crate::model::{Command, LIKED_URI, Loadable, NamedRef, Playback, Repeat, Search, SessionState, Track};
+use crate::settings::AudioQuality;
 
 const AUDIO_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -125,7 +126,8 @@ pub(super) fn start(shared: Arc<Shared>) -> std::io::Result<Arc<dyn Backend>> {
 }
 
 /// The player and its volume control. They outlive a dropped connection, so a reconnect
-/// doesn't reopen the sound card.
+/// doesn't reopen the sound card. The bitrate and loudness normalisation are the settings
+/// at launch: librespot's player keeps its config for its lifetime.
 struct Audio {
     player: Arc<Player>,
     mixer: Arc<dyn Mixer>,
@@ -137,7 +139,13 @@ impl Audio {
         let mixer = open_mixer(MixerConfig::default()).map_err(|e| format!("Can't open the volume control: {e}"))?;
         mixer.set_volume(cache.volume().unwrap_or(u16::MAX / 10 * 7));
         let open_sink = audio_backend::find(None).ok_or("No audio output is built in")?;
-        let config = PlayerConfig { bitrate: Bitrate::Bitrate320, normalisation: true, ..PlayerConfig::default() };
+        let chosen = crate::settings::at_launch();
+        let bitrate = match chosen.audio_quality {
+            AudioQuality::Low => Bitrate::Bitrate96,
+            AudioQuality::Normal => Bitrate::Bitrate160,
+            AudioQuality::VeryHigh => Bitrate::Bitrate320,
+        };
+        let config = PlayerConfig { bitrate, normalisation: chosen.normalize_volume, ..PlayerConfig::default() };
         let player = Player::new(config, session.clone(), mixer.get_soft_volume(), move || open_sink(None, AudioFormat::default()));
         Ok(Self { player, mixer })
     }

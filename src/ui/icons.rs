@@ -89,3 +89,7 @@ pub static MARK: Icon = line(
     "baliset-mark",
     r#"<rect x="4" y="3" width="16" height="3.2" rx="1.6" fill="currentColor"/><rect x="4" y="17.8" width="16" height="3.2" rx="1.6" fill="currentColor"/><path d="M8 8.6h8M8 12h8M8 15.4h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>"#,
 );
+pub static SETTINGS: Icon = line(
+    "baliset-settings",
+    r#"<path d="M4.5 7h9M18.5 7h1M4.5 12h2M11.5 12h8M4.5 17h7M16.5 17h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="12" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/>"#,
+);
