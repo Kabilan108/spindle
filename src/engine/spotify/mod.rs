@@ -629,7 +629,9 @@ impl Online<'_> {
         }
         self.queue.report(&cluster.player_state);
         let context = library::normalize_context(&cluster.player_state.context_uri);
-        let context = Some(context).filter(|uri| !uri.is_empty());
+        // A cluster sent while a load is still settling names no context; what was asked for
+        // stands until one does.
+        let context = Some(context).filter(|uri| !uri.is_empty()).or_else(|| self.shared.read(|store| store.playback.context_uri.clone()));
         let changed = self.shared.read(|store| store.playback.context_uri != context || !store.playback.active);
         if !changed {
             return;
