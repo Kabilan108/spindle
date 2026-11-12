@@ -1,4 +1,5 @@
-//! The sidebar: the mark, Home, Search, Liked Songs, then every playlist in a virtual list.
+//! The sidebar: the mark, Home, Search, Liked Songs, then the library in a virtual list:
+//! playlists, podcasts or followed artists, whichever shelf is picked.
 
 use std::borrow::Cow;
 
@@ -7,9 +8,79 @@ use rune::{Color, Cursor, El, GrowthSpec, Icon, ScrollSpec, col, el, icon, row, 
 use super::theme::{Palette, SIDEBAR_W, font};
 use super::widgets::{art, fallback_icon, icon_button};
 use super::{LIKED, Main, Route, icons};
-use crate::model::{ContextKind, Loadable, SessionState};
+use crate::model::{ContextKind, ContextSummary, EPISODES_URI, Loadable, SessionState, Store};
 
 const PLAYLIST_ROW_H: f32 = 36.0;
+
+/// Which part of the library the sidebar lists.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Shelf {
+    #[default]
+    Playlists,
+    /// Your Episodes, then followed shows.
+    Podcasts,
+    Artists,
+}
+
+impl Shelf {
+    const ALL: [Shelf; 3] = [Shelf::Playlists, Shelf::Podcasts, Shelf::Artists];
+
+    fn label(self) -> &'static str {
+        match self {
+            Shelf::Playlists => "Playlists",
+            Shelf::Podcasts => "Podcasts",
+            Shelf::Artists => "Artists",
+        }
+    }
+
+    fn list(self, store: &Store) -> &Loadable<Vec<ContextSummary>> {
+        match self {
+            Shelf::Playlists => &store.playlists,
+            Shelf::Podcasts => &store.shows,
+            Shelf::Artists => &store.artists,
+        }
+    }
+
+    /// Rows ahead of the list's own: Your Episodes heads the podcasts.
+    fn lead(self) -> usize {
+        usize::from(self == Shelf::Podcasts)
+    }
+
+    fn entry(self, store: &Store, i: usize) -> Option<ContextSummary> {
+        if self == Shelf::Podcasts && i == 0 {
+            return Some(ContextSummary { uri: EPISODES_URI.into(), name: "Your Episodes".into(), subtitle: String::new(), image_url: None, kind: ContextKind::Episodes });
+        }
+        self.list(store).ready()?.get(i - self.lead()).cloned()
+    }
+
+    fn empty(self) -> &'static str {
+        match self {
+            Shelf::Playlists => "No playlists yet",
+            Shelf::Podcasts => "No podcasts followed yet",
+            Shelf::Artists => "No artists followed yet",
+        }
+    }
+}
+
+fn shelf_chip(shelf: Shelf, picked: bool, p: Palette) -> El {
+    row()
+        .key(format!("shelf-{}", shelf.label().to_lowercase()))
+        .role("tab")
+        .label(shelf.label())
+        .checked(picked)
+        .h(26.0)
+        .px(9.0)
+        .center()
+        .radius(13.0)
+        .fill(if picked { p.raised } else { Color::TRANSPARENT })
+        .border(1.0, if picked { p.raised } else { p.line })
+        .hover(p.hover)
+        .press(p.press)
+        .cursor(Cursor::Pointer)
+        .focusable(true)
+        .on_press(move |s: &mut Main| s.shelf = shelf)
+        .child(text(shelf.label()).font(font::SMALL).color(if picked { p.text } else { p.muted }))
+}
 
 fn nav_item(key: &str, glyph: &'static Icon, label: &str, selected: bool, p: Palette, go: fn(&mut Main)) -> El {
     let ink = if selected { p.text } else { p.muted };
@@ -51,23 +122,33 @@ pub fn view(s: &Main, p: Palette) -> El {
         .child(nav_item("nav-search", &icons::SEARCH, "Search", s.route == Route::Search, p, |s| s.go_search(true)))
         .child(nav_item("nav-liked", &icons::HEART, "Liked Songs", s.route == Route::Context(LIKED.into()), p, |s| s.open(LIKED)));
 
-    let playlists = s.link.read(|store| match &store.playlists {
-        Loadable::Ready(list) => Ok(list.len()),
+    let shelf = s.shelf;
+    let entries = s.link.read(|store| match shelf.list(store) {
+        Loadable::Ready(list) => Ok(list.len() + shelf.lead()),
         Loadable::Failed(error) => Err(Some(error.clone())),
         Loadable::Idle | Loadable::Loading => Err(None),
     });
-    let count = playlists.as_ref().map_or(String::new(), |n| n.to_string());
-    let header = row()
-        .key("playlists-header")
-        .h(28.0)
-        .px(18.0)
-        .mt(14.0)
-        .center_y()
-        .justify_between()
-        .child(text("PLAYLISTS").font(font::CAPS).color(p.faint))
-        .child(text(count).font(font::CAPS).color(p.faint));
-    let list = match playlists {
-        Ok(0) => quiet("No playlists yet", p),
+    let mut header = row().key("playlists-header").h(28.0).px(14.0).mt(14.0).mb(4.0).gap(6.0).center_y();
+    for each in Shelf::ALL {
+        header = header.child(shelf_chip(each, each == shelf, p));
+    }
+    let list = match entries {
+        Ok(0) => quiet(shelf.empty(), p),
+        Ok(n) if shelf != Shelf::Playlists => col()
+            .key("library-scroll")
+            .grow(1.0)
+            .min_h(0.0)
+            .scroll(ScrollSpec { stick_bottom: false })
+            .scroll_edge_fade(12.0)
+            .child(
+                col()
+                    .key("library")
+                    .px(8.0)
+                    .pb(8.0)
+                    .growth(GrowthSpec::default())
+                    .virtual_rows(n, PLAYLIST_ROW_H, |s: &Main, i| Cow::Owned(format!("{:?}{i}", s.shelf)), shelf_row)
+                    .virtual_rows_version((shelf, n)),
+            ),
         Ok(n) => col()
             .key("playlist-scroll")
             .grow(1.0)
@@ -83,8 +164,8 @@ pub fn view(s: &Main, p: Palette) -> El {
                     .virtual_rows(n, PLAYLIST_ROW_H, |_: &Main, i| Cow::Owned(format!("pl{i}")), playlist_row)
                     .virtual_rows_version(n),
             ),
-        Err(Some(error)) => quiet(&format!("Couldn't load playlists: {error}"), p),
-        Err(None) => quiet("Loading playlists…", p),
+        Err(Some(error)) => quiet(&format!("Couldn't load {}: {error}", shelf.label().to_lowercase()), p),
+        Err(None) => quiet(&format!("Loading {}…", shelf.label().to_lowercase()), p),
     };
     col()
         .key("sidebar")
@@ -150,5 +231,37 @@ fn playlist_row(s: &Main, i: usize) -> El {
         .cursor(Cursor::Pointer)
         .on_press(move |s: &mut Main| s.open(&uri))
         .child(art(&s.art, &s.link, item.image_url.as_deref(), 26.0, 4.0, p, fallback_icon(ContextKind::Playlist)))
+        .child(text(item.name).font(font::NAV).color(if selected { p.text } else { p.muted }).truncate().grow(1.0).min_w(0.0))
+}
+
+/// A podcast or a followed artist. Artists are round; Your Episodes gets the saved mark.
+fn shelf_row(s: &Main, i: usize) -> El {
+    let p = Palette::new(s.dark.get());
+    let shelf = s.shelf;
+    let Some(item) = s.link.read(|store| shelf.entry(store, i)) else {
+        return el().h(PLAYLIST_ROW_H);
+    };
+    let selected = s.route == Route::Context(item.uri.clone());
+    let cover = match item.kind {
+        ContextKind::Episodes => el().size(26.0, 26.0).radius(4.0).gradient(p.accent.mix(p.bg, 0.25), p.accent.mix(p.bg, 0.7)).center().child(icon(&icons::BOOKMARK_FILLED, 13.0).color(p.on_accent)),
+        ContextKind::Artist => art(&s.art, &s.link, item.image_url.as_deref(), 26.0, 13.0, p, fallback_icon(item.kind)),
+        _ => art(&s.art, &s.link, item.image_url.as_deref(), 26.0, 4.0, p, fallback_icon(item.kind)),
+    };
+    let uri = item.uri.clone();
+    row()
+        .role("link")
+        .label(item.name.clone())
+        .checked(selected)
+        .h(PLAYLIST_ROW_H)
+        .px(10.0)
+        .gap(10.0)
+        .center_y()
+        .radius(6.0)
+        .fill(if selected { p.selected } else { Color::TRANSPARENT })
+        .hover(p.hover)
+        .press(p.press)
+        .cursor(Cursor::Pointer)
+        .on_press(move |s: &mut Main| s.open(&uri))
+        .child(cover)
         .child(text(item.name).font(font::NAV).color(if selected { p.text } else { p.muted }).truncate().grow(1.0).min_w(0.0))
 }

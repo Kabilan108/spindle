@@ -200,3 +200,51 @@ fn art_is_kept_by_url_not_decoded_per_view() {
     }
     assert_eq!(rt.state.art_entries(), before, "the same views find the same handles");
 }
+
+#[test]
+fn the_podcasts_shelf_lists_your_episodes_then_followed_shows() {
+    let (mut rt, log) = window(|_| {});
+    click(&mut rt, "shelf-podcasts");
+    assert_eq!(rt.state.shelf, super::sidebar::Shelf::Podcasts);
+    let labels: Vec<String> = rt.elements().into_iter().filter(|e| e.role == "link").filter_map(|e| e.label).collect();
+    let at = labels.iter().position(|l| l == "Your Episodes").expect("Your Episodes is listed");
+    assert_eq!(labels.get(at + 1).map(String::as_str), Some("Signal & Noise"));
+    clear(&log);
+    click(&mut rt, "Podcasts1");
+    assert_eq!(rt.state.route, super::Route::Context("spotify:show:demo0".into()));
+    assert_eq!(sent(&log), vec![Command::LoadContext { uri: "spotify:show:demo0".into() }]);
+}
+
+#[test]
+fn an_episode_plays_inside_its_show_so_next_and_previous_work() {
+    const SHOW: &str = "spotify:show:demo0";
+    let (mut rt, log) = window(|s| s.open(SHOW));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(SHOW), Some(Loadable::Ready(_))));
+    clear(&log);
+    let (x, y) = rt.find("trk2").expect("the third episode is built");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.05);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    frames(&mut rt, 2);
+    let plays: Vec<Command> = sent(&log).into_iter().filter(|c| matches!(c, Command::PlayContext { .. })).collect();
+    assert_eq!(plays, vec![Command::PlayContext { uri: SHOW.into(), track_uri: Some("spotify:episode:demo0x2".into()) }]);
+    engine_answered(&mut rt, |store| store.playback.track.as_ref().is_some_and(|t| t.uri == "spotify:episode:demo0x2"));
+    let artist = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("now-artist")).and_then(|e| e.text);
+    assert_eq!(artist.as_deref(), Some("Signal & Noise"), "the bar names the show");
+    assert!(rt.find("now-like").is_none(), "episodes don't go in Liked Songs");
+}
+
+#[test]
+fn the_follow_button_unfollows_a_followed_show() {
+    const SHOW: &str = "spotify:show:demo1";
+    let (mut rt, log) = window(|s| s.open(SHOW));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(SHOW), Some(Loadable::Ready(_))));
+    clear(&log);
+    click(&mut rt, "follow");
+    assert_eq!(sent(&log), vec![Command::SetFollowed { uri: SHOW.into(), followed: false }]);
+    engine_answered(&mut rt, |store| !store.follows(SHOW));
+    let label = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("follow")).and_then(|e| e.label);
+    assert_eq!(label.as_deref(), Some("Follow"));
+}

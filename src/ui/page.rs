@@ -54,6 +54,7 @@ fn kind_label(kind: ContextKind) -> &'static str {
         ContextKind::Liked => "COLLECTION",
         ContextKind::Show => "PODCAST",
         ContextKind::Other => "",
+        ContextKind::Episodes => "COLLECTION",
     }
 }
 
@@ -151,9 +152,16 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
     if !meta.is_empty() {
         info = info.child(text(meta).font(font::SMALL).color(p.muted).truncate());
     }
-    info = info.child(
-        row().mt(10.0).child(pill_button("page-play", label, Some(glyph), true, p).on_press(move |s: &mut Main| s.play_or_toggle(&uri))),
-    );
+    let mut buttons = row().mt(10.0).gap(10.0).child(pill_button("page-play", label, Some(glyph), true, p).on_press(move |s: &mut Main| s.play_or_toggle(&uri)));
+    if summary.kind == ContextKind::Artist && !summary.uri.is_empty() {
+        let uri = summary.uri.clone();
+        let followed = s.link.read(|store| store.follows(&uri));
+        let (label, glyph) = if followed { ("Following", Some(&icons::CHECK)) } else { ("Follow", None) };
+        buttons = buttons.child(
+            pill_button("follow", label, glyph, false, p).checked(followed).on_press(move |s: &mut Main| s.link.send(Command::SetFollowed { uri: uri.clone(), followed: !followed })),
+        );
+    }
+    info = info.child(buttons);
     row()
         .key("page-header")
         .px(PAD + 8.0)
@@ -207,7 +215,7 @@ fn track_list(p: Palette, uri: &str, count: usize, look: RowLook) -> El {
 }
 
 /// Up and Down move the selection, Return plays it. Space goes on to the window.
-fn list_key(s: &mut Main, ev: &KeyEvent, tx: &mut Tx, uri: &str, count: usize) -> bool {
+pub(super) fn list_key(s: &mut Main, ev: &KeyEvent, tx: &mut Tx, uri: &str, count: usize) -> bool {
     if count == 0 || ev.mods.cmd || ev.mods.alt {
         return false;
     }

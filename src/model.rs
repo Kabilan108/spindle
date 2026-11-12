@@ -37,6 +37,8 @@ pub enum ContextKind {
     Show,
     #[default]
     Other,
+    /// The user's saved podcast episodes.
+    Episodes,
 }
 
 /// Something that can be opened as a page and played as a whole: a playlist, an album, an
@@ -180,6 +182,31 @@ pub struct Search {
     pub results: Loadable<SearchResults>,
 }
 
+/// A calendar day, as Spotify dates an episode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Day {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+}
+
+/// What a show or an episode says about itself beyond its name.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Details {
+    /// Plain text on one line.
+    pub description: String,
+    /// When an episode came out. Shows and undated episodes (audiobook chapters) have none.
+    pub released: Option<Day>,
+}
+
+/// How far into an episode Baliset got.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EpisodeProgress {
+    pub position_ms: u32,
+    /// Heard to the end, or near enough.
+    pub played: bool,
+}
+
 /// Everything the UI draws. The engine owns it; the UI reads it under [`Engine::read`].
 ///
 /// [`Engine::read`]: crate::engine::Engine::read
@@ -198,9 +225,25 @@ pub struct Store {
     pub liked: HashSet<String>,
     /// The last thing that went wrong, for a toast. Cleared by [`Command::DismissNotice`].
     pub notice: Option<String>,
+    /// Followed podcasts, newest follow first.
+    pub shows: Loadable<Vec<ContextSummary>>,
+    /// Followed artists, newest follow first.
+    pub artists: Loadable<Vec<ContextSummary>>,
+    /// Descriptions and release days of shows and episodes, by URI.
+    pub details: HashMap<String, Details>,
+    /// Where each episode played in Baliset was left, by URI.
+    pub episode_progress: HashMap<String, EpisodeProgress>,
+}
+
+impl Store {
+    pub fn follows(&self, uri: &str) -> bool {
+        [&self.shows, &self.artists].iter().any(|list| list.ready().is_some_and(|list| list.iter().any(|item| item.uri == uri)))
+    }
 }
 
 pub const LIKED_URI: &str = "spotify:collection";
+/// The user's saved episodes ("Your Episodes"). Spotify plays it as a context under this URI.
+pub const EPISODES_URI: &str = "spotify:collection:your-episodes";
 
 /// What the UI asks of the engine. Every command returns at once; results arrive in the
 /// [`Store`].
@@ -230,4 +273,6 @@ pub enum Command {
     Search { query: String },
     SetLiked { uri: String, liked: bool },
     DismissNotice,
+    /// Follow or unfollow a show or an artist.
+    SetFollowed { uri: String, followed: bool },
 }

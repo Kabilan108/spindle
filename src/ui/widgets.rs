@@ -24,6 +24,8 @@ pub fn fallback_icon(kind: ContextKind) -> &'static Icon {
         ContextKind::Artist => &icons::PERSON,
         ContextKind::Liked => &icons::HEART_FILLED,
         ContextKind::Playlist => &icons::LIBRARY,
+        ContextKind::Show => &icons::PODCAST,
+        ContextKind::Episodes => &icons::BOOKMARK_FILLED,
         _ => &icons::NOTE,
     }
 }

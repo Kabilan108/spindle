@@ -90,8 +90,8 @@ fn metadata(track: Option<&Track>) -> Metadata {
     if let Some(art) = &track.image_url {
         put("mpris:artUrl", variant(art.clone()));
     }
-    if let Some(id) = track.uri.strip_prefix("spotify:track:") {
-        put("xesam:url", variant(format!("https://open.spotify.com/track/{id}")));
+    if let Some((kind @ ("track" | "episode"), id)) = track.uri.strip_prefix("spotify:").and_then(|rest| rest.split_once(':')) {
+        put("xesam:url", variant(format!("https://open.spotify.com/{kind}/{id}")));
     }
     map
 }
@@ -161,7 +161,7 @@ impl PlayerInterface {
         }
     }
     fn open_uri(&self, uri: String) {
-        if uri.starts_with("spotify:track:") {
+        if uri.starts_with("spotify:track:") || uri.starts_with("spotify:episode:") {
             self.engine.send(Command::PlayTracks { uris: vec![uri], index: 0 });
         } else if uri.starts_with("spotify:") {
             self.engine.send(Command::PlayContext { uri, track_uri: None });
@@ -381,6 +381,26 @@ mod tests {
         assert_eq!(text("mpris:artUrl"), "https://i.scdn.co/image/x");
         assert_eq!(i64::try_from(map["mpris:length"].try_clone().unwrap()).unwrap(), 201_000_000);
         assert_eq!(Vec::<String>::try_from(map["xesam:artist"].try_clone().unwrap()).unwrap(), ["One", "Two"]);
+    }
+
+    #[test]
+    fn an_episode_shows_its_show_as_artist_and_album_and_its_full_length() {
+        let show = NamedRef { uri: "spotify:show:01A062kejnXFkJE01bjN5J".into(), name: "The Standup".into() };
+        let episode = Track {
+            uri: "spotify:episode:0KhbTiRLZGEr1SlEVRcbKO".into(),
+            name: "The Death of Stack Overflow".into(),
+            artists: vec![show.clone()],
+            album: Some(show),
+            duration_ms: 10_947_603,
+            ..track()
+        };
+        let map = metadata(Some(&episode));
+        let text = |key: &str| String::try_from(map[key].try_clone().unwrap()).unwrap();
+        assert_eq!(text("xesam:album"), "The Standup");
+        assert_eq!(Vec::<String>::try_from(map["xesam:artist"].try_clone().unwrap()).unwrap(), ["The Standup"]);
+        assert_eq!(text("xesam:url"), "https://open.spotify.com/episode/0KhbTiRLZGEr1SlEVRcbKO");
+        assert_eq!(i64::try_from(map["mpris:length"].try_clone().unwrap()).unwrap(), 10_947_603_000);
+        assert_eq!(track_path(Some(&episode)), "/org/baliset/track/0KhbTiRLZGEr1SlEVRcbKO");
     }
 
     #[test]

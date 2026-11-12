@@ -18,6 +18,10 @@ use protobuf::{EnumOrUnknown, Message};
 use super::wire::{self, Field};
 use crate::model::{ContextKind, ContextSummary, NamedRef, Track};
 
+mod podcasts;
+
+pub(super) use podcasts::SAVED_EPISODES;
+
 /// Entities per extended-metadata request.
 pub(super) const BATCH: usize = 100;
 const COVER_WIDTH: i32 = 300;
@@ -61,6 +65,10 @@ fn track(entity_uri: &str, message: &proto::Track) -> Track {
 fn album_summary(entity_uri: &str, message: &proto::Album) -> ContextSummary {
     let names: Vec<&str> = message.artist.iter().map(|artist| artist.name()).collect();
     ContextSummary { uri: entity_uri.to_owned(), name: message.name().to_owned(), subtitle: names.join(", "), image_url: cover(&message.cover_group), kind: ContextKind::Album }
+}
+
+fn artist_summary(entity_uri: &str, message: &proto::Artist) -> ContextSummary {
+    ContextSummary { uri: entity_uri.to_owned(), name: message.name().to_owned(), subtitle: "Artist".into(), image_url: cover(&message.portrait_group), kind: ContextKind::Artist }
 }
 
 /// A playlist's cover: its own picture, else the one its generator attached.
@@ -134,10 +142,13 @@ pub(super) fn collection_page(body: &[u8]) -> Option<CollectionPage> {
     Some(page)
 }
 
-fn page_request(username: &str, token: Option<&str>) -> Vec<u8> {
+/// The collection's sets: Liked Songs and saved albums share this one.
+const COLLECTION_SET: &str = "collection";
+
+fn page_request(username: &str, set: &str, token: Option<&str>) -> Vec<u8> {
     let mut body = Vec::new();
     wire::put_bytes(&mut body, 1, username.as_bytes());
-    wire::put_bytes(&mut body, 2, b"collection");
+    wire::put_bytes(&mut body, 2, set.as_bytes());
     if let Some(token) = token {
         wire::put_bytes(&mut body, 3, token.as_bytes());
     }
@@ -145,14 +156,14 @@ fn page_request(username: &str, token: Option<&str>) -> Vec<u8> {
     body
 }
 
-fn write_request(username: &str, item_uri: &str, present: bool, now: u64) -> Vec<u8> {
+fn write_request(username: &str, set: &str, item_uri: &str, present: bool, now: u64) -> Vec<u8> {
     let mut item = Vec::new();
     wire::put_bytes(&mut item, 1, item_uri.as_bytes());
     wire::put_varint(&mut item, 2, now);
     wire::put_varint(&mut item, 3, u64::from(!present));
     let mut body = Vec::new();
     wire::put_bytes(&mut body, 1, username.as_bytes());
-    wire::put_bytes(&mut body, 2, b"collection");
+    wire::put_bytes(&mut body, 2, set.as_bytes());
     wire::put_bytes(&mut body, 3, &item);
     wire::put_bytes(&mut body, 4, format!("{now:x}").as_bytes());
     body
@@ -298,8 +309,7 @@ impl Catalog {
         let top_track_uris = top.into_iter().flat_map(|top| &top.track).filter_map(|track| uri("track", track.gid())).collect();
         let groups = message.album_group.iter().chain(&message.single_group);
         let album_uris = groups.filter_map(|group| uri("album", group.album.first()?.gid())).take(albums).collect();
-        let summary = ContextSummary { uri: artist_uri.to_owned(), name: message.name().to_owned(), subtitle: "Artist".into(), image_url: cover(&message.portrait_group), kind: ContextKind::Artist };
-        Ok(Artist { summary, top_track_uris, album_uris })
+        Ok(Artist { summary: artist_summary(artist_uri, &message), top_track_uris, album_uris })
     }
 
     /// The catalogue's tracks for a search, best first. `context` is a `spotify:search:`
@@ -319,22 +329,8 @@ impl Catalog {
 
     /// Liked Songs and saved albums, newest first.
     pub(super) async fn collection(&self) -> Result<Collection, Error> {
-        let username = self.username();
-        let mut items = Vec::new();
-        let mut token = None;
-        loop {
-            let request = page_request(&username, token.as_deref());
-            let body = self.session.spclient().request(&Method::POST, "/collection/v2/paging", Some(Self::collection_headers()), Some(&request)).await?;
-            let page = collection_page(&body).ok_or_else(|| unreadable("collection"))?;
-            items.extend(page.items);
-            match page.next {
-                Some(next) if token.as_deref() != Some(next.as_str()) => token = Some(next),
-                _ => break,
-            }
-        }
-        items.sort_by_key(|item| std::cmp::Reverse(item.1));
         let mut collection = Collection::default();
-        for (item_uri, _) in items {
+        for item_uri in self.saved(COLLECTION_SET).await? {
             if item_uri.starts_with("spotify:track:") {
                 collection.tracks.push(item_uri);
             } else if item_uri.starts_with("spotify:album:") {
@@ -344,10 +340,34 @@ impl Catalog {
         Ok(collection)
     }
 
+    /// Every item in one of the collection's sets, newest first.
+    pub(super) async fn saved(&self, set: &str) -> Result<Vec<String>, Error> {
+        let username = self.username();
+        let mut items = Vec::new();
+        let mut token = None;
+        loop {
+            let request = page_request(&username, set, token.as_deref());
+            let body = self.session.spclient().request(&Method::POST, "/collection/v2/paging", Some(Self::collection_headers()), Some(&request)).await?;
+            let page = collection_page(&body).ok_or_else(|| unreadable("collection"))?;
+            items.extend(page.items);
+            match page.next {
+                Some(next) if token.as_deref() != Some(next.as_str()) => token = Some(next),
+                _ => break,
+            }
+        }
+        items.sort_by_key(|item| std::cmp::Reverse(item.1));
+        Ok(items.into_iter().map(|(item_uri, _)| item_uri).collect())
+    }
+
     /// Add a track to Liked Songs, or take it out.
     pub(super) async fn set_saved(&self, item_uri: &str, saved: bool) -> Result<(), Error> {
+        self.set_saved_in(COLLECTION_SET, item_uri, saved).await
+    }
+
+    /// Put an item in one of the collection's sets, or take it out.
+    async fn set_saved_in(&self, set: &str, item_uri: &str, saved: bool) -> Result<(), Error> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
-        let request = write_request(&self.username(), item_uri, saved, now);
+        let request = write_request(&self.username(), set, item_uri, saved, now);
         self.session.spclient().request(&Method::POST, "/collection/v2/write", Some(Self::collection_headers()), Some(&request)).await?;
         Ok(())
     }
@@ -437,7 +457,7 @@ mod tests {
     #[test]
     fn a_save_writes_the_item_as_present_and_a_removal_as_removed() {
         for (saved, flag) in [(true, 0), (false, 1)] {
-            let body = write_request("someone", "spotify:track:a", saved, 1_794_349_469);
+            let body = write_request("someone", "collection", "spotify:track:a", saved, 1_794_349_469);
             let fields = wire::fields(&body).unwrap();
             assert_eq!(fields[0], Field::Bytes(1, b"someone"));
             assert_eq!(fields[1], Field::Bytes(2, b"collection"));
