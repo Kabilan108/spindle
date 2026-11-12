@@ -1,10 +1,11 @@
 //! The now-playing bar: the track, transport, a seek bar and volume.
 
-use rune::{Align, Color, Cursor, Drag, El, Tx, col, el, row, text};
+use rune::{Align, Color, Cursor, Drag, El, PointerPress, Tx, col, el, row, text};
 
 use super::meter::{Bar, fmt_time};
 use super::theme::{BAR_H, Palette, SPRING, font};
 use super::widgets::{art, icon_button};
+use super::menu::{At, playing_target};
 use super::{Main, icons};
 use crate::model::{Command, Repeat, Track};
 
@@ -73,6 +74,10 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
         .w(SIDE_W)
         .gap(12.0)
         .center_y()
+        .on_secondary_press(|s: &mut Main, press: PointerPress, _: &mut Tx| {
+            let target = s.link.read(playing_target);
+            s.open_menu(target, At::from(press));
+        })
         .child(cover)
         .child(
             col()
@@ -211,6 +216,7 @@ fn extras(s: &Main, p: Palette, f: &Facts) -> El {
         .gap(6.0)
         .center_y()
         .justify_end()
+        .child(toggle("queue-toggle", "Up next", &icons::QUEUE, s.queue_open, p).on_press(|s: &mut Main| s.queue_open = !s.queue_open))
         .child(
             icon_button("mute", if f.volume <= 0.0 { "Unmute" } else { "Mute" }, volume_glyph, 32.0, p.muted, p)
                 .on_press(|s: &mut Main| s.volume.toggle_mute(&s.link)),

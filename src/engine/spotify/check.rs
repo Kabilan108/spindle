@@ -248,7 +248,7 @@ async fn profile(p: &Probe) -> Outcome {
 }
 
 async fn rootlist(p: &Probe) -> Outcome {
-    let playlists = non_empty(p.catalog.playlists(1000).await.map_err(err)?, "playlists")?;
+    let playlists = non_empty(p.catalog.playlists(1000).await.map_err(err)?.playlists, "playlists")?;
     let named = playlists.iter().filter(|playlist| !playlist.name.is_empty()).count();
     if named == 0 {
         return Err(format!("{} playlists, none with a name", playlists.len()));

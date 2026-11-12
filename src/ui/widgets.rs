@@ -118,7 +118,7 @@ pub fn card(s: &Main, item: &ContextSummary, w: f32, p: Palette) -> El {
     let inner = w - 16.0;
     let round = item.kind == ContextKind::Artist;
     let radius = if round { inner / 2.0 } else { 6.0 };
-    let (open_uri, play_uri) = (item.uri.clone(), item.uri.clone());
+    let (open_uri, play_uri, menu_item) = (item.uri.clone(), item.uri.clone(), item.clone());
     let play = el()
         .key("play")
         .role("button")
@@ -153,6 +153,7 @@ pub fn card(s: &Main, item: &ContextSummary, w: f32, p: Palette) -> El {
         .cursor(Cursor::Pointer)
         .focusable(true)
         .on_press(move |s: &mut Main| s.open(&open_uri))
+        .on_secondary_press(move |s: &mut Main, press: rune::PointerPress, _: &mut rune::Tx| s.open_card_menu(menu_item.clone(), press.into()))
         .child(cover.mb(6.0))
         .child(text(item.name.clone()).font(font::CARD_TITLE).color(p.text).truncate())
         .child(text(item.subtitle.clone()).font(font::SMALL).color(p.muted).truncate())

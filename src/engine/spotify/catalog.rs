@@ -3,7 +3,7 @@
 //! extended-metadata services on the session's own access point. The public Web API is
 //! not an option here: it refuses the desktop client id with a blanket 429.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use http::header::{ACCEPT, CONTENT_TYPE};
@@ -12,7 +12,7 @@ use librespot_core::{Error, Session, SpotifyId};
 use librespot_protocol::extended_metadata::{BatchedEntityRequest, EntityRequest, ExtensionQuery};
 use librespot_protocol::extension_kind::ExtensionKind;
 use librespot_protocol::metadata as proto;
-use librespot_protocol::playlist4_external::{ListAttributes, SelectedListContent};
+use librespot_protocol::playlist4_external::{ListAttributes, MetaItem, SelectedListContent};
 use protobuf::{EnumOrUnknown, Message};
 
 use super::wire::{self, Field};
@@ -85,6 +85,13 @@ fn playlist_image(attributes: &ListAttributes) -> Option<String> {
 
 fn playlist_summary(playlist_uri: &str, attributes: &ListAttributes, owner: &str) -> ContextSummary {
     ContextSummary { uri: playlist_uri.to_owned(), name: attributes.name().to_owned(), subtitle: owner.to_owned(), image_url: playlist_image(attributes), kind: ContextKind::Playlist }
+}
+
+/// The account's playlists, and which of them it may change.
+#[derive(Default)]
+pub(super) struct Rootlist {
+    pub playlists: Vec<ContextSummary>,
+    pub editable: HashSet<String>,
 }
 
 pub(super) struct Playlist {
@@ -169,7 +176,16 @@ fn write_request(username: &str, set: &str, item_uri: &str, present: bool, now: 
     body
 }
 
-fn unreadable(what: &str) -> Error {
+/// Whether the account may add and remove a listed playlist's tracks. The list says so in its
+/// capabilities; without them, owning the playlist or its being collaborative is enough.
+fn may_edit(meta: &MetaItem, username: &str) -> bool {
+    match meta.capabilities.as_ref() {
+        Some(capabilities) if capabilities.has_can_edit_items() => capabilities.can_edit_items(),
+        _ => meta.owner_username() == username || meta.attributes.collaborative(),
+    }
+}
+
+pub(super) fn unreadable(what: &str) -> Error {
     Error::failed_precondition(format!("Spotify sent an unreadable {what}"))
 }
 
@@ -188,6 +204,10 @@ impl Catalog {
         self.session.username()
     }
 
+    pub(super) fn session(&self) -> &Session {
+        &self.session
+    }
+
     /// The account's display name.
     pub(super) async fn display_name(&self) -> Result<String, Error> {
         let body = self.session.spclient().get_user_profile(&self.username(), None, None).await?;
@@ -196,8 +216,9 @@ impl Catalog {
     }
 
     /// Every playlist in the account's list, in its order. Folders are flattened away.
-    pub(super) async fn playlists(&self, limit: usize) -> Result<Vec<ContextSummary>, Error> {
-        let mut playlists = Vec::new();
+    pub(super) async fn playlists(&self, limit: usize) -> Result<Rootlist, Error> {
+        let username = self.username();
+        let mut rootlist = Rootlist::default();
         let mut from = 0;
         loop {
             let body = self.session.spclient().get_rootlist(from, Some(BATCH)).await?;
@@ -205,13 +226,16 @@ impl Catalog {
             let contents = &list.contents;
             for (item, meta) in contents.items.iter().zip(&contents.meta_items) {
                 if item.uri().starts_with("spotify:playlist:") && meta.attributes.is_some() {
-                    playlists.push(playlist_summary(item.uri(), &meta.attributes, meta.owner_username()));
+                    rootlist.playlists.push(playlist_summary(item.uri(), &meta.attributes, meta.owner_username()));
+                    if may_edit(meta, &username) {
+                        rootlist.editable.insert(item.uri().to_owned());
+                    }
                 }
             }
             from += contents.items.len();
             let total = usize::try_from(list.length()).unwrap_or(0);
-            if contents.items.is_empty() || from >= total || playlists.len() >= limit {
-                return Ok(playlists);
+            if contents.items.is_empty() || from >= total || rootlist.playlists.len() >= limit {
+                return Ok(rootlist);
             }
         }
     }
@@ -432,6 +456,20 @@ mod tests {
         assert_eq!(playlist_image(&attributes).as_deref(), Some("https://i.scdn.co/image/generated"));
         attributes.set_picture(vec![0xab, 0xcd]);
         assert_eq!(playlist_image(&attributes).as_deref(), Some("https://i.scdn.co/image/abcd"));
+    }
+
+    #[test]
+    fn a_playlist_is_editable_when_its_capabilities_say_so_or_else_when_owned_or_shared() {
+        let mut meta = MetaItem::new();
+        meta.set_owner_username("me".into());
+        assert!(may_edit(&meta, "me"));
+        assert!(!may_edit(&meta, "someone"));
+        meta.attributes.mut_or_insert_default().set_collaborative(true);
+        assert!(may_edit(&meta, "someone"));
+        meta.capabilities.mut_or_insert_default().set_can_edit_items(false);
+        assert!(!may_edit(&meta, "me"), "the capabilities have the last word");
+        meta.capabilities.mut_or_insert_default().set_can_edit_items(true);
+        assert!(may_edit(&meta, "someone"));
     }
 
     #[test]

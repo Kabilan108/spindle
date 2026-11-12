@@ -248,3 +248,213 @@ fn the_follow_button_unfollows_a_followed_show() {
     let label = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("follow")).and_then(|e| e.label);
     assert_eq!(label.as_deref(), Some("Follow"));
 }
+
+/// A menu item by its label.
+fn element(rt: &Runtime<Main>, label: &str) -> Option<rune::ElementInfo> {
+    rt.elements().into_iter().find(|e| e.role == "menuitem" && e.label.as_deref() == Some(label))
+}
+
+fn click_label(rt: &mut Runtime<Main>, label: &str) {
+    let e = element(rt, label).unwrap_or_else(|| panic!("nothing labelled {label}"));
+    let [x, y, w, h] = e.rect;
+    rt.pointer_down(x + w / 2.0, y + h / 2.0);
+    rt.pointer_up(x + w / 2.0, y + h / 2.0);
+    frames(rt, 2);
+}
+
+fn right_click(rt: &mut Runtime<Main>, key: &str) {
+    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("no element keyed {key}"));
+    rt.secondary_down(x, y);
+    rt.secondary_up(x, y);
+    frames(rt, 20);
+}
+
+fn menu_open(rt: &Runtime<Main>) -> bool {
+    rt.elements().iter().any(|e| e.key.as_deref() == Some("track-menu-menu"))
+}
+
+fn playlist_window() -> (Runtime<Main>, Sent) {
+    let (mut rt, log) = window(|s| s.open(PLAYLIST));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(PLAYLIST), Some(Loadable::Ready(_))));
+    (rt, log)
+}
+
+fn track_at(rt: &Runtime<Main>, uri: &str, i: usize) -> String {
+    rt.state.link.read(|store| store.pages[uri].ready().unwrap().tracks[i].uri.clone())
+}
+
+#[test]
+fn right_clicking_a_row_selects_it_and_add_to_queue_queues_it() {
+    let (mut rt, log) = playlist_window();
+    let track = track_at(&rt, PLAYLIST, 4);
+    clear(&log);
+    right_click(&mut rt, "trk4");
+    assert_eq!(rt.state.selected, Some(4));
+    assert!(menu_open(&rt));
+    for label in ["Play", "Add to queue", "Go to song radio", "Add to playlist", "Remove from this playlist", "Go to album", "Go to artist"] {
+        assert!(element(&rt, label).is_some(), "the menu offers {label}");
+    }
+    click_label(&mut rt, "Add to queue");
+    assert_eq!(sent(&log), vec![Command::AddToQueue { uri: track.clone() }]);
+    engine_answered(&mut rt, |store| store.up_next.queued.len() == 1);
+    frames(&mut rt, 20);
+    assert!(!menu_open(&rt), "picking an item closes the menu");
+    assert_eq!(rt.state.link.read(|store| store.up_next.queued[0].uri.clone()), track);
+}
+
+#[test]
+fn an_album_page_offers_no_removal() {
+    let album = "spotify:album:demo1";
+    let (mut rt, _log) = window(|s| s.open(album));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(album), Some(Loadable::Ready(_))));
+    right_click(&mut rt, "trk0");
+    assert!(element(&rt, "Add to playlist").is_some());
+    assert!(element(&rt, "Remove from this playlist").is_none());
+}
+
+#[test]
+fn the_menu_key_opens_the_selected_rows_menu_and_escape_hands_focus_back() {
+    let (mut rt, log) = playlist_window();
+    click(&mut rt, "trk2");
+    let focused = |rt: &Runtime<Main>| rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key);
+    assert_eq!(focused(&rt).as_deref(), Some("tracklist"));
+    for (key, shift) in [(Key::ContextMenu, false), (Key::Function(10), true)] {
+        rt.key(KeyEvent { key: key.clone(), mods: Mods { shift, ..Mods::default() } });
+        frames(&mut rt, 20);
+        assert!(menu_open(&rt), "{key:?} opens the menu");
+        let menu = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("track-menu-menu")).unwrap();
+        let row = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("trk2")).unwrap();
+        assert!((menu.rect[1] - (row.rect[1] + row.rect[3])).abs() < 2.0 || menu.rect[1] + menu.rect[3] <= row.rect[1] + 1.0, "it opens at the row");
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        frames(&mut rt, 20);
+        assert!(!menu_open(&rt));
+        assert_eq!(focused(&rt).as_deref(), Some("tracklist"), "focus goes back to the list");
+    }
+    rt.key(KeyEvent { key: Key::Down, mods: Mods::default() });
+    frames(&mut rt, 2);
+    clear(&log);
+    rt.key(KeyEvent { key: Key::ContextMenu, mods: Mods::default() });
+    frames(&mut rt, 20);
+    assert_eq!(focused(&rt).as_deref(), Some("track-menu-item0"), "the menu takes focus on its first item");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    frames(&mut rt, 2);
+    let track = track_at(&rt, PLAYLIST, 3);
+    assert_eq!(sent(&log), vec![Command::PlayContext { uri: PLAYLIST.into(), track_uri: Some(track) }], "Return picks the first item, Play");
+}
+
+#[test]
+fn add_to_playlist_lists_editable_playlists_and_adds_to_the_one_picked() {
+    let (mut rt, log) = playlist_window();
+    let track = track_at(&rt, PLAYLIST, 1);
+    right_click(&mut rt, "trk1");
+    click_label(&mut rt, "Add to playlist");
+    frames(&mut rt, 20);
+    assert!(menu_open(&rt), "the menu stays open, showing playlists");
+    assert!(element(&rt, "Sunday Cooking").is_some());
+    assert!(element(&rt, "Songs My Sister Sent").is_some(), "collaborative playlists count");
+    assert!(element(&rt, "Discover Weekly").is_none(), "Spotify's own don't");
+    clear(&log);
+    click_label(&mut rt, "Sunday Cooking");
+    let target = "spotify:playlist:demo1";
+    assert_eq!(sent(&log), vec![Command::AddToPlaylist { playlist_uri: target.into(), track_uri: track.clone() }]);
+    frames(&mut rt, 20);
+    assert!(!menu_open(&rt));
+
+    rt.update(|s, _| s.open(target));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(target), Some(Loadable::Ready(_))));
+    let tracks = rt.state.link.read(|store| store.pages[target].ready().unwrap().tracks.len());
+    assert_eq!(track_at(&rt, target, tracks - 1), track, "the track lands at the end");
+}
+
+#[test]
+fn remove_from_this_playlist_takes_the_row_out() {
+    let (mut rt, log) = playlist_window();
+    let (before, track) = (rt.state.link.read(|store| store.pages[PLAYLIST].ready().unwrap().tracks.len()), track_at(&rt, PLAYLIST, 3));
+    right_click(&mut rt, "trk3");
+    clear(&log);
+    click_label(&mut rt, "Remove from this playlist");
+    assert_eq!(sent(&log), vec![Command::RemoveFromPlaylist { playlist_uri: PLAYLIST.into(), track_uri: track.clone(), index: 3 }]);
+    engine_answered(&mut rt, |store| store.pages[PLAYLIST].ready().is_some_and(|page| page.tracks.len() == before - 1));
+    assert_ne!(track_at(&rt, PLAYLIST, 3), track);
+}
+
+#[test]
+fn go_to_song_radio_opens_the_radio_playlist() {
+    let (mut rt, _log) = playlist_window();
+    let track = track_at(&rt, PLAYLIST, 0);
+    right_click(&mut rt, "trk0");
+    click_label(&mut rt, "Go to song radio");
+    engine_answered(&mut rt, |store| store.radios.get(&track).is_some_and(|radio| radio.ready().is_some()));
+    let radio = rt.state.link.read(|store| store.radios[&track].ready().cloned().unwrap());
+    assert_eq!(rt.state.route, super::Route::Context(radio));
+    assert_eq!(rt.state.awaiting_radio, None);
+}
+
+#[test]
+fn the_shuffle_button_starts_the_page_shuffled_then_toggles_shuffle() {
+    let album = "spotify:album:demo2";
+    let (mut rt, log) = window(|s| s.open(album));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(album), Some(Loadable::Ready(_))));
+    let ring = |rt: &Runtime<Main>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("page-shuffle")).map(|e| e.fill);
+    let off = ring(&rt);
+    clear(&log);
+    click(&mut rt, "page-shuffle");
+    assert_eq!(sent(&log), vec![Command::PlayShuffled { uri: album.into() }]);
+    engine_answered(&mut rt, |store| store.playback.shuffle && store.playback.context_uri.as_deref() == Some(album));
+    assert_ne!(ring(&rt), off, "the button shows it's on while this album plays shuffled");
+    clear(&log);
+    click(&mut rt, "page-shuffle");
+    assert_eq!(sent(&log), vec![Command::SetShuffle(false)]);
+}
+
+#[test]
+fn the_queue_button_shows_up_next_and_a_queued_row_plays_on_double_click() {
+    let (mut rt, log) = window(|_| {});
+    rt.state.link.send(Command::AddToQueue { uri: "spotify:track:demo1x2".into() });
+    engine_answered(&mut rt, |store| store.up_next.queued.len() == 1);
+    assert!(rt.find("upnext").is_none());
+    click(&mut rt, "queue-toggle");
+    frames(&mut rt, 10);
+    assert!(rt.find("upnext-playing").is_some());
+    assert!(rt.find("upnext-next0").is_some(), "the context's next tracks show");
+    clear(&log);
+    let (x, y) = rt.find("upnext-queued0").expect("the queued track shows");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.05);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    frames(&mut rt, 2);
+    assert_eq!(sent(&log), vec![Command::SkipTo { uri: "spotify:track:demo1x2".into() }]);
+    engine_answered(&mut rt, |store| store.up_next.queued.is_empty());
+    assert_eq!(rt.state.link.read(|store| store.playback.track.as_ref().map(|t| t.uri.clone())).as_deref(), Some("spotify:track:demo1x2"));
+
+    right_click(&mut rt, "upnext-next0");
+    assert!(element(&rt, "Play").is_some() && element(&rt, "Remove from queue").is_none(), "context rows aren't queued");
+    rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+    frames(&mut rt, 10);
+    click(&mut rt, "upnext-close");
+    assert!(rt.find("upnext").is_none());
+}
+
+#[test]
+fn a_cards_menu_plays_shuffles_and_opens() {
+    let (mut rt, log) = window(|_| {});
+    let album = rt.state.link.read(|store| store.recents[1].clone());
+    right_click(&mut rt, &format!("card:{}", album.uri));
+    for label in ["Play", "Shuffle play", "Go to album"] {
+        assert!(element(&rt, label).is_some(), "{label}");
+    }
+    clear(&log);
+    click_label(&mut rt, "Shuffle play");
+    assert_eq!(sent(&log), vec![Command::PlayShuffled { uri: album.uri }]);
+}
+
+#[test]
+fn the_now_playing_track_has_a_menu_without_play() {
+    let (mut rt, _log) = window(|_| {});
+    right_click(&mut rt, "now-title");
+    assert!(menu_open(&rt));
+    assert!(element(&rt, "Play").is_none());
+    assert!(element(&rt, "Add to queue").is_some() && element(&rt, "Go to artist").is_some());
+}

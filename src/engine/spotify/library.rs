@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::catalog::{BATCH, Catalog};
 use crate::engine::Shared;
-use crate::model::{ContextKind, ContextPage, ContextSummary, EPISODES_URI, LIKED_URI, Loadable, Search, SearchResults, SessionState, Store, Track};
+use crate::model::{ContextKind, ContextPage, ContextSummary, EPISODES_URI, LIKED_URI, Loadable, Search, SearchResults, SessionState, Store, Track, UpNext};
 
 mod podcasts;
 mod progress;
@@ -181,6 +181,10 @@ pub(super) struct Library {
     /// The newest like or unlike asked for each track; only it may undo itself on failure.
     liked_asks: Mutex<HashMap<String, u64>>,
     progress: progress::Progress,
+    /// The newest description of up next; an older one that lands later is dropped.
+    up_next: AtomicU64,
+    /// Playlist changes reach Spotify one at a time, each against the revision before it.
+    playlist_writes: tokio::sync::Mutex<()>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -200,6 +204,8 @@ impl Library {
             progress: progress::Progress::open(shared.clone(), recents_path.with_file_name("episodes.json")),
             shared,
             recents_path,
+            up_next: AtomicU64::new(0),
+            playlist_writes: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -295,7 +301,9 @@ impl Library {
             }
         });
         let username = catalog.username();
-        let loaded = catalog.playlists(MAX_PLAYLISTS).await.map(|mut playlists| {
+        let loaded = catalog.playlists(MAX_PLAYLISTS).await.map(|rootlist| {
+            let (mut playlists, editable) = (rootlist.playlists, rootlist.editable);
+            self.shared.update(|store| store.editable = editable);
             for playlist in &mut playlists {
                 if playlist.subtitle == username {
                     playlist.subtitle = display_name.unwrap_or(&username).to_owned();
@@ -680,6 +688,98 @@ impl Library {
                 page.tracks.insert(0, track);
             }
         });
+    }
+}
+
+impl Library {
+    /// Describe what plays next and show it. Called with the URIs the device reported.
+    pub(super) async fn describe_up_next(self: Arc<Self>, queued: Vec<String>, upcoming: Vec<String>) {
+        let attempt = self.up_next.fetch_add(1, Ordering::SeqCst) + 1;
+        let Ok(catalog) = self.catalog() else { return };
+        let described = tokio::join!(self.describe(&catalog, &queued), self.describe(&catalog, &upcoming));
+        let (Ok(queued), Ok(upcoming)) = described else {
+            log::info!("can't describe up next");
+            return;
+        };
+        self.shared.update(|store| {
+            if self.up_next.load(Ordering::SeqCst) == attempt {
+                store.up_next = UpNext { queued, upcoming };
+            }
+        });
+    }
+
+    /// Nothing plays here any more: up next is empty, and descriptions on their way are stale.
+    pub(super) fn clear_up_next(&self) {
+        self.up_next.fetch_add(1, Ordering::SeqCst);
+        if self.shared.read(|store| store.up_next != UpNext::default()) {
+            self.shared.update(|store| store.up_next = UpNext::default());
+        }
+    }
+
+    pub(super) async fn load_radio(self: Arc<Self>, track_uri: String) {
+        if self.shared.read(|store| matches!(store.radios.get(&track_uri), Some(Loadable::Loading | Loadable::Ready(_)))) {
+            return;
+        }
+        self.shared.update(|store| store.radios.insert(track_uri.clone(), Loadable::Loading));
+        let found = match self.catalog() {
+            Ok(catalog) => catalog.radio(&track_uri).await.map_err(|e| e.to_string()),
+            Err(offline) => Err(offline),
+        };
+        self.shared.update(|store| match found {
+            Ok(radio) => {
+                store.radios.insert(track_uri, Loadable::Ready(radio));
+            }
+            Err(error) => {
+                store.notice = Some(format!("Couldn't find this song's radio: {error}"));
+                store.radios.insert(track_uri, Loadable::Failed(error));
+            }
+        });
+    }
+
+    pub(super) async fn add_to_playlist(self: Arc<Self>, playlist_uri: String, track_uri: String) {
+        let _in_order = self.playlist_writes.lock().await;
+        let added = match self.catalog() {
+            Ok(catalog) => catalog.add_to_playlist(&playlist_uri, &track_uri).await.map_err(|e| e.to_string()),
+            Err(offline) => Err(offline),
+        };
+        if let Err(error) = added {
+            self.shared.update(|store| store.notice = Some(format!("Couldn't add to the playlist: {error}")));
+            return;
+        }
+        let track = lock(&self.tracks).get(&track_uri).cloned();
+        self.shared.update(|store| {
+            if let (Some(Loadable::Ready(page)), Some(track)) = (store.pages.get_mut(&playlist_uri), track) {
+                page.tracks.push(track);
+            }
+        });
+        self.refresh_page(playlist_uri).await;
+    }
+
+    pub(super) async fn remove_from_playlist(self: Arc<Self>, playlist_uri: String, track_uri: String, index: usize) {
+        let _in_order = self.playlist_writes.lock().await;
+        let removed = match self.catalog() {
+            Ok(catalog) => catalog.remove_from_playlist(&playlist_uri, &track_uri, index).await.map_err(|e| e.to_string()),
+            Err(offline) => Err(offline),
+        };
+        if let Err(error) = removed {
+            self.shared.update(|store| store.notice = Some(format!("Couldn't remove from the playlist: {error}")));
+            return;
+        }
+        self.shared.update(|store| {
+            if let Some(Loadable::Ready(page)) = store.pages.get_mut(&playlist_uri)
+                && page.tracks.get(index).is_some_and(|track| track.uri == track_uri)
+            {
+                page.tracks.remove(index);
+            }
+        });
+        self.refresh_page(playlist_uri).await;
+    }
+
+    /// Read an open page again, so it shows what Spotify now holds.
+    async fn refresh_page(self: &Arc<Self>, uri: String) {
+        if self.shared.read(|store| store.pages.get(&uri).is_some_and(|page| page.ready().is_some())) {
+            self.clone().load_context(uri).await;
+        }
     }
 }
 

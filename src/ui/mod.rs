@@ -5,9 +5,11 @@ mod bar;
 mod home;
 pub mod icons;
 mod link;
+mod menu;
 mod meter;
 mod page;
 mod podcast;
+mod queue;
 mod scenes;
 mod search;
 mod session;
@@ -86,6 +88,12 @@ pub struct Main {
     pub settings_open: bool,
     /// Which part of the library the sidebar lists.
     pub shelf: sidebar::Shelf,
+    /// The right-click menu, while it's open.
+    pub menu: Option<menu::OpenMenu>,
+    /// The up next panel shows.
+    pub queue_open: bool,
+    /// A song radio asked for and not found yet, by seed track URI; it opens when it arrives.
+    pub awaiting_radio: Option<String>,
 }
 
 impl Main {
@@ -110,6 +118,9 @@ impl Main {
             zoom: zoom::Zoom::restored(),
             settings_open: false,
             shelf: sidebar::Shelf::default(),
+            menu: None,
+            queue_open: false,
+            awaiting_radio: None,
         }
     }
 
@@ -132,6 +143,7 @@ impl Main {
         let visible = self.visible();
         self.progress.sync(&self.link, visible, tx);
         self.volume.sync(&self.link);
+        self.radio_arrived();
     }
 
     /// The window came back: catch the bar up and start ticking again.
@@ -153,6 +165,7 @@ impl Main {
             self.route = Route::Context(uri.to_owned());
             self.selected = None;
         }
+        self.menu = None;
     }
 
     /// Sign out of Spotify on this device: stops playback and forgets the saved sign-in.
@@ -186,6 +199,15 @@ impl Main {
     pub fn play_or_toggle(&self, uri: &str) {
         let current = self.link.read(|store| store.playback.context_uri.as_deref() == Some(uri) && store.playback.track.is_some());
         if current { self.link.send(Command::PlayPause) } else { self.play_context(uri, None) }
+    }
+
+    /// Plays the context shuffled, or turns shuffle on and off when it's the one playing.
+    pub fn shuffle_or_toggle(&self, uri: &str) {
+        let current = self.link.read(|store| (store.playback.context_uri.as_deref() == Some(uri) && store.playback.track.is_some()).then_some(store.playback.shuffle));
+        match current {
+            Some(shuffle) => self.link.send(Command::SetShuffle(!shuffle)),
+            None => self.link.send(Command::PlayShuffled { uri: uri.to_owned() }),
+        }
     }
 
     pub fn set_liked(&self, uri: &str, liked: bool) {
@@ -278,6 +300,8 @@ pub fn main_view(s: &Main, cx: &mut Cx<Main>) -> El {
         SessionState::NeedsLogin { url, error } => session::sign_in(p, url.as_deref(), error.as_deref()),
         SessionState::Online { .. } | SessionState::Offline { .. } => shell(s, cx, p, &session),
     };
+    let layer = menu::layer(s, cx, p);
+    let body = rune_kit::root(col().key("body").w_full().h_full().child(body), layer);
     zoom::frame(s, cx, p, col().key("root").w_full().h_full().fill(p.bg).on_key(main_key), body)
 }
 
@@ -301,7 +325,8 @@ fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El 
                 .min_h(0.0)
                 .child(sidebar::view(s, p))
                 .child(el().w(1.0).h_full().fill(p.line))
-                .child(col().key("pane").grow(1.0).min_w(0.0).h_full().min_h(0.0).child(pane)),
+                .child(col().key("pane").grow(1.0).min_w(0.0).h_full().min_h(0.0).child(pane))
+                .children(s.queue_open.then(|| queue::view(s, p))),
         )
         .child(bar::view(s, p));
     if let Some(notice) = s.link.read(|store| store.notice.clone()) {

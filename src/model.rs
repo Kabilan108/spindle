@@ -175,6 +175,14 @@ pub struct SearchResults {
     pub playlists: Vec<ContextSummary>,
 }
 
+/// What plays after the current track: tracks added with [`Command::AddToQueue`] first, then
+/// the rest of the context.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UpNext {
+    pub queued: Vec<Track>,
+    pub upcoming: Vec<Track>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Search {
     /// The query `results` answer.
@@ -225,6 +233,13 @@ pub struct Store {
     pub liked: HashSet<String>,
     /// The last thing that went wrong, for a toast. Cleared by [`Command::DismissNotice`].
     pub notice: Option<String>,
+    /// While this device plays: what comes next.
+    pub up_next: UpNext,
+    /// Playlists the account may add tracks to and remove them from: its own and
+    /// collaborative ones.
+    pub editable: HashSet<String>,
+    /// Song radio playlists by seed track URI, filled by [`Command::LoadRadio`].
+    pub radios: HashMap<String, Loadable<String>>,
     /// Followed podcasts, newest follow first.
     pub shows: Loadable<Vec<ContextSummary>>,
     /// Followed artists, newest follow first.
@@ -275,4 +290,18 @@ pub enum Command {
     DismissNotice,
     /// Follow or unfollow a show or an artist.
     SetFollowed { uri: String, followed: bool },
+    /// Play `uri` after the current track and anything queued before it.
+    AddToQueue { uri: String },
+    /// Skip ahead to `uri`, a track in [`Store::up_next`].
+    SkipTo { uri: String },
+    /// Take the queued track at `index` of [`UpNext::queued`] out of the queue.
+    RemoveFromQueue { index: usize },
+    /// Fill `Store::radios[track_uri]` with the URI of the track's radio playlist.
+    LoadRadio { track_uri: String },
+    /// Add a track to the end of an editable playlist.
+    AddToPlaylist { playlist_uri: String, track_uri: String },
+    /// Remove the track at `index` of a playlist; `track_uri` guards against a stale index.
+    RemoveFromPlaylist { playlist_uri: String, track_uri: String, index: usize },
+    /// Play a context from a random track with shuffle on.
+    PlayShuffled { uri: String },
 }
