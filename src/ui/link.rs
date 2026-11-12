@@ -3,6 +3,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use crate::engine::analysis::Analysis;
 use crate::engine::{Engine, ImageBytes};
 use crate::model::{Command, Store};
 
@@ -35,6 +36,10 @@ impl Link {
     /// on the calling thread and may read the store themselves.
     pub fn read<R>(&self, read: impl FnOnce(&Store) -> R) -> R {
         self.engine.read(read)
+    }
+
+    pub fn analysis(&self) -> Analysis {
+        self.engine.analysis()
     }
 
     pub fn image(&self, url: &str) -> Option<ImageBytes> {

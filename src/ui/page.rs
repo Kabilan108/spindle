@@ -7,7 +7,7 @@ use rune::{Cx, El, GrowthSpec, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row
 
 use super::theme::{Palette, ROW_H, font};
 use super::widgets::{RowFacts, RowLook, art, card, empty_state, fallback_icon, heading, pill_button, track_header, track_row};
-use super::{LIKED, Main, icons};
+use super::{LIKED, Main, icons, viz};
 use crate::model::{Command, ContextKind, ContextPage, ContextSummary, Loadable, Store};
 
 const PAD: f32 = 20.0;
@@ -154,7 +154,7 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
     info = info.child(
         row().mt(10.0).child(pill_button("page-play", label, Some(glyph), true, p).on_press(move |s: &mut Main| s.play_or_toggle(&uri))),
     );
-    row()
+    let head = row()
         .key("page-header")
         .px(PAD + 8.0)
         .pt(28.0)
@@ -162,7 +162,11 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
         .gap(24.0)
         .items_end()
         .child(cover.shadow(6.0, 20.0, p.shadow))
-        .child(info)
+        .child(info);
+    match viz::header_palette(s, summary.image_url.as_deref(), summary.kind) {
+        Some(palette) => col().key("page-head").w_full().child(viz::header::ambient(s, p, &palette)).child(head),
+        None => head,
+    }
 }
 
 fn row_facts(store: &Store, uri: &str, i: usize, selected: Option<usize>) -> Option<RowFacts> {
