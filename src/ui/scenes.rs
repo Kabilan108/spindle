@@ -1,6 +1,7 @@
 //! Named states for headless snapshots (`--scene NAME`), built on the demo engine. Each waits
 //! for the engine's answer so the snapshot shows it.
 
+use super::menu::{At, page_target};
 use super::{LIKED, Main, Scene};
 use crate::model::{Command, Loadable, SessionState};
 
@@ -64,6 +65,46 @@ fn toast(s: &mut Main) {
     s.link.send_and_wait(Command::PlayContext { uri: "spotify:playlist:gone".into(), track_uri: None }, |store| store.notice.is_some());
 }
 
+fn track_menu(s: &mut Main) {
+    playlist(s);
+    let target = s.link.read(|store| page_target(store, "spotify:playlist:demo0", 5));
+    s.open_menu(target, At::Below("trk5".into()));
+}
+
+fn track_menu_playlists(s: &mut Main) {
+    track_menu(s);
+    if let Some(menu) = &mut s.menu {
+        menu.picking = true;
+    }
+}
+
+fn card_menu(s: &mut Main) {
+    let album = s.link.read(|store| store.albums.ready().and_then(|albums| albums.first().cloned()));
+    if let Some(album) = album {
+        s.open_card_menu(album, At::Point(330.0, 230.0));
+    }
+}
+
+fn up_next(s: &mut Main) {
+    s.link.send(Command::AddToQueue { uri: "spotify:track:demo1x2".into() });
+    s.link.send_and_wait(Command::AddToQueue { uri: "spotify:track:demo4x0".into() }, |store| store.up_next.queued.len() == 2);
+    s.link.send_and_wait(Command::PlayPause, |store| store.playback.playing);
+    s.queue_open = true;
+    open(s, "spotify:playlist:demo0");
+}
+
+fn shuffled(s: &mut Main) {
+    s.link.send_and_wait(Command::PlayShuffled { uri: "spotify:album:demo2".into() }, |store| store.playback.shuffle);
+    album(s);
+}
+
+fn radio(s: &mut Main) {
+    s.link.send_and_wait(Command::LoadRadio { track_uri: "spotify:track:demo3x1".into() }, |store| !store.radios.is_empty());
+    s.go_radio("spotify:track:demo3x1");
+    let uri = s.link.read(|store| store.radios.values().find_map(|radio| radio.ready().cloned())).unwrap_or_default();
+    open(s, &uri);
+}
+
 pub const MAIN_SCENES: &[Scene<Main>] = &[
     ("home", |_| {}),
     ("playlist", playlist),
@@ -78,4 +119,10 @@ pub const MAIN_SCENES: &[Scene<Main>] = &[
     ("connecting", connecting),
     ("offline", offline),
     ("toast", toast),
+    ("track-menu", track_menu),
+    ("track-menu-playlists", track_menu_playlists),
+    ("card-menu", card_menu),
+    ("up-next", up_next),
+    ("shuffled", shuffled),
+    ("radio", radio),
 ];

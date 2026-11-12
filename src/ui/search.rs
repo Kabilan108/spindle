@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
-use rune::{Cursor, Cx, El, ScrollSpec, col, el, icon, row, text, text_input};
+use rune::{Cursor, Cx, El, PointerPress, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::theme::{Palette, font};
 use super::widgets::{RowFacts, RowLook, card, empty_state, heading, icon_button, track_row};
+use super::menu::{At, search_target};
 use super::{Main, icons};
 use crate::model::{Command, ContextSummary, Loadable, SearchResults};
 
@@ -78,7 +79,7 @@ fn results_view(s: &Main, p: Palette, found: SearchResults) -> El {
             let liked: Vec<bool> = tracks.iter().map(|t| store.liked.contains(&t.uri)).collect();
             (playing_uri, store.playback.playing, liked)
         });
-        let mut list = col().key("songs");
+        let mut list = col().key("songs").focus_group();
         for (i, track) in tracks.into_iter().take(SONGS).enumerate() {
             let uris = uris.clone();
             let facts = RowFacts {
@@ -89,7 +90,12 @@ fn results_view(s: &Main, p: Palette, found: SearchResults) -> El {
                 track,
             };
             let play = move |s: &mut Main| s.link.send(Command::PlayTracks { uris: uris.to_vec(), index: i });
-            list = list.child(track_row(s, p, i, facts, RowLook { art: true, album: true }, play).key(format!("song{i}")));
+            let row = track_row(s, p, i, facts, RowLook { art: true, album: true }, play).key(format!("song{i}")).focusable(true);
+            list = list.child(row.on_secondary_press(move |s: &mut Main, press: PointerPress, _: &mut Tx| {
+                s.selected = Some(i);
+                let target = s.link.read(|store| search_target(store, i));
+                s.open_menu(target, At::from(press));
+            }));
         }
         out = out.child(section("Songs", p)).child(list);
     }

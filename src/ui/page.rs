@@ -3,10 +3,11 @@
 
 use std::borrow::Cow;
 
-use rune::{Cx, El, GrowthSpec, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text};
+use rune::{Cursor, Cx, El, GrowthSpec, Key, KeyEvent, PointerPress, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::theme::{Palette, ROW_H, font};
 use super::widgets::{RowFacts, RowLook, art, card, empty_state, fallback_icon, heading, pill_button, track_header, track_row};
+use super::menu::{self, At};
 use super::{LIKED, Main, icons};
 use crate::model::{Command, ContextKind, ContextPage, ContextSummary, Loadable, Store};
 
@@ -20,7 +21,7 @@ enum Shown {
 }
 
 /// What the page is, before its tracks arrive: from the library lists, or a bare guess.
-fn known_summary(store: &Store, uri: &str) -> ContextSummary {
+pub(super) fn known_summary(store: &Store, uri: &str) -> ContextSummary {
     if uri == LIKED {
         return ContextSummary { uri: uri.into(), name: "Liked Songs".into(), subtitle: String::new(), image_url: None, kind: ContextKind::Liked };
     }
@@ -152,7 +153,13 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
         info = info.child(text(meta).font(font::SMALL).color(p.muted).truncate());
     }
     info = info.child(
-        row().mt(10.0).child(pill_button("page-play", label, Some(glyph), true, p).on_press(move |s: &mut Main| s.play_or_toggle(&uri))),
+        row()
+            .mt(10.0)
+            .gap(10.0)
+            .center_y()
+            .child(pill_button("page-play", label, Some(glyph), true, p).on_press(move |s: &mut Main| s.play_or_toggle(&uri)))
+            .child(shuffle_button(s, p, &summary.uri))
+            .children(radio_button(p, summary)),
     );
     row()
         .key("page-header")
@@ -163,6 +170,32 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
         .items_end()
         .child(cover.shadow(6.0, 20.0, p.shadow))
         .child(info)
+}
+
+/// Shuffle beside Play: starts the page shuffled, or toggles shuffle while it plays.
+fn shuffle_button(s: &Main, p: Palette, uri: &str) -> El {
+    let on = s.link.read(|store| store.playback.shuffle && store.playback.context_uri.as_deref() == Some(uri));
+    let uri = uri.to_owned();
+    el().key("page-shuffle")
+        .role("switch")
+        .label("Shuffle")
+        .checked(on)
+        .size(36.0, 36.0)
+        .radius(18.0)
+        .center()
+        .fill(if on { p.accent.alpha(0.12) } else { rune::Color::TRANSPARENT })
+        .border(1.0, if on { p.accent } else { p.line })
+        .cursor(Cursor::Pointer)
+        .focusable(true)
+        .hover(p.hover)
+        .press(p.press)
+        .on_press(move |s: &mut Main| s.shuffle_or_toggle(&uri))
+        .child(icon(&icons::SHUFFLE, 18.0).color(if on { p.accent } else { p.muted }))
+}
+
+fn radio_button(p: Palette, summary: &ContextSummary) -> Option<El> {
+    let station = menu::artist_radio(summary)?;
+    Some(pill_button("page-radio", "Radio", Some(&icons::RADIO), false, p).on_press(move |s: &mut Main| s.play_context(&station, None)))
 }
 
 fn row_facts(store: &Store, uri: &str, i: usize, selected: Option<usize>) -> Option<RowFacts> {
@@ -184,7 +217,14 @@ fn page_row(s: &Main, uri: &str, i: usize, look: RowLook) -> El {
         return el().h(ROW_H);
     };
     let (context, track_uri) = (uri.to_owned(), facts.track.uri.clone());
-    track_row(s, p, i, facts, look, move |s: &mut Main| s.play_context(&context, Some(track_uri.clone())))
+    let menu_uri = uri.to_owned();
+    track_row(s, p, i, facts, look, move |s: &mut Main| s.play_context(&context, Some(track_uri.clone()))).on_secondary_press(
+        move |s: &mut Main, press: PointerPress, _: &mut Tx| {
+            s.selected = Some(i);
+            let target = s.link.read(|store| menu::page_target(store, &menu_uri, i));
+            s.open_menu(target, At::from(press));
+        },
+    )
 }
 
 fn track_list(p: Palette, uri: &str, count: usize, look: RowLook) -> El {
@@ -211,6 +251,14 @@ fn list_key(s: &mut Main, ev: &KeyEvent, tx: &mut Tx, uri: &str, count: usize) -
     if count == 0 || ev.mods.cmd || ev.mods.alt {
         return false;
     }
+    if menu::is_menu_key(ev) {
+        let i = s.selected.unwrap_or(0).min(count - 1);
+        s.selected = Some(i);
+        tx.scroll_into_view(format!("trk{i}"));
+        let target = s.link.read(|store| menu::page_target(store, uri, i));
+        s.open_menu(target, At::Below(format!("trk{i}")));
+        return true;
+    }
     let next = match ev.key {
         Key::Down => s.selected.map_or(0, |i| (i + 1).min(count - 1)),
         Key::Up => s.selected.map_or(0, |i| i.saturating_sub(1)),
@@ -236,9 +284,9 @@ fn artist_body(s: &Main, p: Palette, uri: &str, count: usize, albums: &[ContextS
     let mut body = col().key("artist").w_full();
     if count > 0 {
         body = body.child(heading("Popular", p).px(PAD + 8.0).pb(8.0));
-        let mut list = col().key("popular").px(PAD);
+        let mut list = col().key("popular").px(PAD).focus_group();
         for i in 0..count {
-            list = list.child(page_row(s, uri, i, look).key(format!("trk{i}")));
+            list = list.child(page_row(s, uri, i, look).key(format!("trk{i}")).focusable(true));
         }
         body = body.child(list);
     }

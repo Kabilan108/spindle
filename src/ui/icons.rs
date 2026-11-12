@@ -89,3 +89,21 @@ pub static MARK: Icon = line(
     "baliset-mark",
     r#"<rect x="4" y="3" width="16" height="3.2" rx="1.6" fill="currentColor"/><rect x="4" y="17.8" width="16" height="3.2" rx="1.6" fill="currentColor"/><path d="M8 8.6h8M8 12h8M8 15.4h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>"#,
 );
+pub static QUEUE: Icon = line(
+    "baliset-queue",
+    r#"<path d="M4 6.5h12M4 11.5h12M4 16.5h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15 14.2v5.6a.5.5 0 0 0 .8.4l4-2.8a.5.5 0 0 0 0-.8l-4-2.8a.5.5 0 0 0-.8.4z" fill="currentColor"/>"#,
+);
+pub static RADIO: Icon = line(
+    "baliset-radio",
+    r#"<circle cx="12" cy="12" r="1.8" fill="currentColor"/><path d="M8.6 15.4a4.8 4.8 0 0 1 0-6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.8 18.2a8.8 8.8 0 0 1 0-12.4M18.2 5.8a8.8 8.8 0 0 1 0 12.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>"#,
+);
+pub static PLUS: Icon = line("baliset-plus", r#"<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>"#);
+pub static MINUS: Icon = line(
+    "baliset-minus",
+    r#"<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 12h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>"#,
+);
+pub static DISC: Icon = line(
+    "baliset-disc",
+    r#"<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/>"#,
+);
+pub static BACK: Icon = line("baliset-back", r#"<path d="m14.5 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>"#);

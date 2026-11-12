@@ -10,6 +10,15 @@ and a network connection; nothing is downloaded for offline use.
 - Closing the window keeps the app in the tray. A click on the tray icon shows or hides the
   window; its menu has play, next and previous.
 - MPRIS (`org.mpris.MediaPlayer2.baliset`): media keys, `playerctl` and shell media widgets.
+- Right-click a track (or press the Menu key or Shift+F10 on a track list) for Play, Add to
+  queue, Go to song radio, Add to playlist, Liked Songs, Go to album and Go to artist; on your
+  own or collaborative playlists, Remove from this playlist too. Cards have Play and Shuffle play.
+- Up next: the queue button in the now-playing bar opens a panel with the playing track, what
+  you queued and what the context plays next. Double-click a row to skip to it.
+- Shuffle beside Play on album, playlist, Liked Songs and artist pages; artist pages also have
+  the artist's radio.
+
+![Track menu](docs/screens/track-menu.png)
 
 ![Playlist page](docs/screens/playlist.png)
 
@@ -49,5 +58,8 @@ nix develop -c cargo run --bin baliset-engine               # the engine alone, 
 Playback and the Connect device are librespot. The library (playlists, Liked Songs, saved
 albums, listening history, metadata, search) is read through the same session, from the
 services librespot and the official client use. Spotify's public Web API is not used: it
-answers this kind of sign-in with a blanket 429. These services are not a documented API, so
+answers this kind of sign-in with a blanket 429. The queue goes through Spotify Connect: queue commands are sent to this device the way another
+client would send them, and what plays next is read back from the account's Connect state.
+Playlist edits are posted as changes against the playlist's revision, as the official client
+does. These services are not a documented API, so
 a Spotify change can break the library views until librespot or Baliset catches up.
