@@ -235,11 +235,12 @@ mod tests {
         assert!(!tap.window(start, &mut window));
         let frames = tap.push(&vec![0.25; 2 * 4096]);
         tap.played(frames, start, start);
-        assert!(tap.window(start + Duration::from_millis(60), &mut window), "60 ms into a 93 ms packet");
+        let lag = Duration::from_secs_f64(OUTPUT_LATENCY - DISPLAY_LEAD);
+        assert!(tap.window(start + lag + Duration::from_millis(60), &mut window), "heard 60 ms into a 93 ms packet");
         assert!(window.iter().all(|s| *s == 0.25));
-        assert!(!tap.window(start + Duration::from_millis(200), &mut window), "played out");
+        assert!(!tap.window(start + lag + Duration::from_millis(100), &mut window), "played out");
         tap.stopped();
-        assert!(!tap.window(start + Duration::from_millis(60), &mut window));
+        assert!(!tap.window(start + lag + Duration::from_millis(60), &mut window));
     }
 
     #[test]

@@ -6,6 +6,35 @@ All of it is driven by a simulated signal that a real implementation could suppl
 
 Cost figures below come from the headless runs: whole-frame CPU on this machine, plus counts of view commits and live-value publishes. "Settled" means the time after the pause at which the scene stopped changing anything; from then on it asks for no frames. In every scene a hidden window costs nothing: `Live` values don't wake hidden windows, and the analysis thread should stop when no visible window subscribes.
 
+## In the app
+
+06 and 07 shipped (`src/ui/viz/`, `src/engine/analysis/`). Differences from the lab:
+
+- **Real audio.** A sink wraps librespot's rodio output, copies each packet before the volume
+  into a ring buffer, and keeps an estimate of the play head behind rodio's half-second queue
+  and PipeWire's buffers (about 55 ms). Each step FFTs the 2048 samples centred on what is heard
+  now. When the output drains, the estimate has been within 5 to 21 ms of it in live runs, plus
+  the uncertainty in the output buffer, so the visuals stay within one or two frames of the
+  sound.
+- **No commits for the music.** The Stage's 88 strokes are fixed canvas shapes whose drawn length
+  is a `live_trim`, so the view never re-runs while playing (the lab rebuilt the ring about 34
+  times a second). The disc still turns on the long committed tween.
+- **No compositor.** The glow is a radial gradient with live opacity and scale, the ripple a
+  ring with `Live::pulse`d scale and opacity. There is no grain.
+
+Measured with `top` (one-second samples, 10 per state, release build, demo engine, 1711×1400
+window on niri, % of one core):
+
+| State | CPU |
+|---|---|
+| Home, paused | 0.2% |
+| Home, playing (no visual) | 0.4% |
+| Album header, playing | 7.9% |
+| Album header, paused | 0.1% |
+| Stage, playing | 9.3% |
+| Stage, paused | 0.1% |
+| Stage open and playing, window hidden to the tray | 0.2% |
+
 ## 01 Groundline (mini player, the quietest)
 
 `01-groundline.mp4`, `01-groundline.png`
