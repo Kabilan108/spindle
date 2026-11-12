@@ -8,7 +8,7 @@ use super::link::Link;
 use super::meter::fmt_time;
 use super::theme::{BAR_H, Palette, ROW_H, font};
 use super::Main;
-use crate::model::{Command, ContextKind, ContextSummary, Track};
+use crate::model::{Command, ContextKind, ContextSummary, NamedRef, Track};
 
 /// A square of art, or a quiet placeholder while it loads or when there is none.
 pub fn art(cache: &Art, link: &Link, url: Option<&str>, size: f32, radius: f32, p: Palette, fallback: &'static Icon) -> El {
@@ -207,7 +207,7 @@ pub fn track_row(s: &Main, p: Palette, i: usize, facts: RowFacts, look: RowLook,
             el().h(14.0).px(4.0).radius(3.0).fill(p.raised).center().child(text("E").font(font::CAPS).color(p.muted)),
         );
     }
-    subtitle = subtitle.child(text(t.artist_line()).font(font::ROW_SUB).color(p.muted).truncate().shrink());
+    subtitle = subtitle.child(artist_links(format!("artist{i}"), &t.artists, font::ROW_SUB, p.muted, p.text));
     let titles = col()
         .grow(1.0)
         .min_w(0.0)
@@ -265,4 +265,32 @@ pub fn track_header(p: Palette, look: RowLook) -> El {
         r = r.child(label("ALBUM").grow(0.7).min_w(0.0));
     }
     r.child(el().w(28.0)).child(label("TIME").w(44.0).align(Align::End))
+}
+
+/// Artist names in a line, each one a link to its page. A name without a URI (a podcast's
+/// show, a playlist's owner) is plain text.
+pub fn artist_links(key: impl Into<String>, artists: &[NamedRef], style: rune::TextStyle, rest: Color, hovered: Color) -> El {
+    let key = key.into();
+    let mut line = row().min_w(0.0).shrink();
+    for (i, artist) in artists.iter().enumerate() {
+        if i > 0 {
+            line = line.child(text(", ").font(style).color(rest));
+        }
+        let name_key = if i == 0 { key.clone() } else { format!("{key}-{i}") };
+        let name = text(artist.name.clone()).key(name_key).font(style).color(rest).truncate().shrink();
+        line = line.child(if artist.uri.is_empty() {
+            name
+        } else {
+            let uri = artist.uri.clone();
+            el().min_w(0.0)
+                .shrink()
+                .role("link")
+                .label(artist.name.clone())
+                .cursor(Cursor::Pointer)
+                .hover_group()
+                .on_press(move |s: &mut Main| s.open(&uri))
+                .child(name.group_color(hovered))
+        });
+    }
+    line
 }

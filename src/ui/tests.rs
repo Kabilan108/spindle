@@ -458,3 +458,17 @@ fn the_now_playing_track_has_a_menu_without_play() {
     assert!(element(&rt, "Play").is_none());
     assert!(element(&rt, "Add to queue").is_some() && element(&rt, "Go to artist").is_some());
 }
+
+#[test]
+fn an_albums_artist_and_a_rows_artist_open_the_artist_page() {
+    const ALBUM: &str = "spotify:album:demo0";
+    let (mut rt, _log) = window(|s| s.open(ALBUM));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(ALBUM), Some(Loadable::Ready(_))));
+    let artist = rt.state.link.read(|store| store.pages[ALBUM].ready().unwrap().tracks[0].artists[0].uri.clone());
+    click(&mut rt, "page-owner");
+    assert_eq!(rt.state.route, super::Route::Context(artist.clone()));
+    rt.state.open(ALBUM);
+    frames(&mut rt, 2);
+    click(&mut rt, "artist1");
+    assert_eq!(rt.state.route, super::Route::Context(artist));
+}

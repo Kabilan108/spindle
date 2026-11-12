@@ -17,7 +17,7 @@ use crate::model::{Command, Repeat, Track};
 use crate::ui::bar::{slider, toggle};
 use crate::ui::meter::fmt_time;
 use crate::ui::theme::{Palette, font};
-use crate::ui::widgets::{icon_button, toast};
+use crate::ui::widgets::{artist_links, icon_button, toast};
 use crate::ui::{Main, icons};
 
 const DISC: f32 = 300.0;
@@ -348,7 +348,7 @@ fn info(s: &Main, p: Palette, f: &Facts) -> El {
             row()
                 .gap(12.0)
                 .center_y()
-                .child(text(track.artist_line()).key("stage-artist").font(font::SECTION).color(p.text.alpha(0.78)).truncate().grow(1.0).min_w(0.0))
+                .child(artist_links("stage-artist", &track.artists, font::SECTION, p.text.alpha(0.78), p.text).grow(1.0))
                 .child(like),
         )
         .child(el().h(20.0))

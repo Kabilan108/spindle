@@ -4,7 +4,7 @@ use rune::{Align, Color, Cursor, Drag, El, PointerPress, Tx, col, el, row, text}
 
 use super::meter::{Bar, fmt_time};
 use super::theme::{BAR_H, Palette, SPRING, font};
-use super::widgets::{art, icon_button};
+use super::widgets::{art, artist_links, icon_button};
 use super::menu::{At, playing_target};
 use super::{Main, icons};
 use crate::model::{Command, Repeat, Track};
@@ -85,7 +85,7 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
                 .min_w(0.0)
                 .gap(2.0)
                 .child(title)
-                .child(text(track.artist_line()).key("now-artist").font(font::ROW_SUB).color(p.muted).truncate()),
+                .child(artist_links("now-artist", &track.artists, font::ROW_SUB, p.muted, p.text)),
         );
     // Liked Songs holds songs only.
     if episode {

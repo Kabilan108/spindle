@@ -6,10 +6,10 @@ use std::borrow::Cow;
 use rune::{Cursor, Cx, El, GrowthSpec, Key, KeyEvent, PointerPress, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::theme::{Palette, ROW_H, font};
-use super::widgets::{RowFacts, RowLook, art, card, empty_state, fallback_icon, heading, pill_button, track_header, track_row};
+use super::widgets::{RowFacts, RowLook, art, artist_links, card, empty_state, fallback_icon, heading, pill_button, track_header, track_row};
 use super::menu::{self, At};
 use super::{LIKED, Main, icons, viz};
-use crate::model::{Command, ContextKind, ContextPage, ContextSummary, Loadable, Store};
+use crate::model::{Command, ContextKind, ContextPage, ContextSummary, Loadable, NamedRef, Store};
 
 const PAD: f32 = 20.0;
 const ART: f32 = 176.0;
@@ -80,14 +80,14 @@ pub fn view(s: &Main, _cx: &mut Cx<Main>, p: Palette, uri: &str) -> El {
     let mut content = col().key("page").w_full().pb(28.0);
     match shown {
         Shown::Loading(summary) => {
-            content = content.child(header(s, p, &summary, String::new(), playing_here)).child(
+            content = content.child(header(s, p, &summary, &[], String::new(), playing_here)).child(
                 col().px(PAD + 10.0).py(16.0).child(text("Loading…").font(font::SMALL).color(p.faint)),
             );
         }
         Shown::Failed(summary, error) => {
             let retry_uri = uri.to_owned();
             content = content
-                .child(header(s, p, &summary, String::new(), false))
+                .child(header(s, p, &summary, &[], String::new(), false))
                 .child(empty_state("page-failed", &icons::OFFLINE, "Couldn't load this page", &error, p))
                 .child(
                     row().justify_center().child(
@@ -98,15 +98,13 @@ pub fn view(s: &Main, _cx: &mut Cx<Main>, p: Palette, uri: &str) -> El {
         }
         Shown::Ready { summary, count, total_ms, truncated, albums } => {
             let mut meta = vec![];
-            if !summary.subtitle.is_empty() && summary.kind != ContextKind::Artist {
-                meta.push(summary.subtitle.clone());
-            }
+            let owners = if summary.subtitle.is_empty() || summary.kind == ContextKind::Artist { Vec::new() } else { owners(s, &summary) };
             if count > 0 {
                 let plus = if truncated { "+" } else { "" };
                 meta.push(format!("{count}{plus} {}", if count == 1 { "song" } else { "songs" }));
                 meta.push(length(total_ms));
             }
-            content = content.child(header(s, p, &summary, meta.join("  ·  "), playing_here));
+            content = content.child(header(s, p, &summary, &owners, meta.join("  ·  "), playing_here));
             if summary.kind == ContextKind::Artist {
                 content = content.child(artist_body(s, p, uri, count, &albums));
             } else if count == 0 {
@@ -131,7 +129,21 @@ pub fn view(s: &Main, _cx: &mut Cx<Main>, p: Palette, uri: &str) -> El {
         .child(content)
 }
 
-fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_here: bool) -> El {
+/// Who a page is by, as links where its tracks say which artist a name is: an album's
+/// artists. A playlist's owner has no page.
+fn owners(s: &Main, summary: &ContextSummary) -> Vec<NamedRef> {
+    if summary.kind != ContextKind::Album {
+        return vec![NamedRef { uri: String::new(), name: summary.subtitle.clone() }];
+    }
+    s.link.read(|store| {
+        let tracks = store.pages.get(&summary.uri).and_then(Loadable::ready).map_or(&[][..], |page| page.tracks.as_slice());
+        let known = |name: &str| tracks.iter().flat_map(|track| &track.artists).find(|artist| artist.name == name).cloned();
+        let named: Option<Vec<NamedRef>> = summary.subtitle.split(", ").map(known).collect();
+        named.unwrap_or_else(|| vec![NamedRef { uri: String::new(), name: summary.subtitle.clone() }])
+    })
+}
+
+fn header(s: &Main, p: Palette, summary: &ContextSummary, owners: &[NamedRef], meta: String, playing_here: bool) -> El {
     let cover = if summary.kind == ContextKind::Liked {
         el().size(ART, ART)
             .radius(8.0)
@@ -150,8 +162,13 @@ fn header(s: &Main, p: Palette, summary: &ContextSummary, meta: String, playing_
         .gap(6.0)
         .child(text(kind_label(summary.kind)).font(font::CAPS).color(p.muted))
         .child(text(summary.name.clone()).key("page-title").font(font::PAGE_TITLE).color(p.text).max_lines(2));
-    if !meta.is_empty() {
-        info = info.child(text(meta).font(font::SMALL).color(p.muted).truncate());
+    if !owners.is_empty() || !meta.is_empty() {
+        let mut line = row().key("page-meta").min_w(0.0).child(artist_links("page-owner", owners, font::SMALL, p.muted, p.text));
+        if !meta.is_empty() {
+            let rest = if owners.is_empty() { meta } else { format!("  ·  {meta}") };
+            line = line.child(text(rest).font(font::SMALL).color(p.muted).truncate());
+        }
+        info = info.child(line);
     }
     let mut buttons = row()
         .mt(10.0)
