@@ -7,6 +7,9 @@ and a network connection; nothing is downloaded for offline use.
 - Shows up as a Spotify Connect device ("Baliset (hostname)"), so the phone app and other
   clients can play to it and control it.
 - Main window: recents, saved albums, playlists, Liked Songs, artist and album pages, search.
+- Podcasts: followed shows, Your Episodes and show pages (audio only). The sidebar's library
+  switches between playlists, podcasts and followed artists; shows and artists can be followed
+  from their pages. Baliset remembers where you left episodes it played and picks up there.
 - Closing the window keeps the app in the tray. A click on the tray icon shows or hides the
   window; its menu has play, next and previous.
 - MPRIS (`org.mpris.MediaPlayer2.baliset`): media keys, `playerctl` and shell media widgets.
@@ -22,8 +25,8 @@ baliset --demo       # canned data, no account, no sound
 
 The first launch shows a sign-in screen. It opens Spotify's sign-in page in the browser and
 waits for it to come back to `http://127.0.0.1:5588/login`. The saved sign-in lives in
-`~/.local/share/baliset/` (owner-only). The sign-out button sits beside your name at the
-bottom of the sidebar. Audio is cached in
+`~/.local/share/baliset/` (owner-only), with `episodes.json`, where episodes were left. The
+sign-out button sits beside your name at the bottom of the sidebar. Audio is cached in
 `~/.cache/baliset/audio`, up to 2 GB.
 
 Keys: Space play/pause, Ctrl+L or Ctrl+K search, Ctrl+Left/Right previous/next, Ctrl+W close
