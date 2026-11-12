@@ -89,3 +89,12 @@ pub static MARK: Icon = line(
     "baliset-mark",
     r#"<rect x="4" y="3" width="16" height="3.2" rx="1.6" fill="currentColor"/><rect x="4" y="17.8" width="16" height="3.2" rx="1.6" fill="currentColor"/><path d="M8 8.6h8M8 12h8M8 15.4h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>"#,
 );
+pub static PODCAST: Icon = line(
+    "baliset-podcast",
+    r#"<rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5v3M9 20.5h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>"#,
+);
+pub static BOOKMARK_FILLED: Icon = line(
+    "baliset-bookmark-filled",
+    r#"<path d="M7 4.5h10a1 1 0 0 1 1 1v14l-6-3.8-6 3.8v-14a1 1 0 0 1 1-1z" fill="currentColor" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>"#,
+);
+pub static CHECK: Icon = line("baliset-check", r#"<path d="m5.5 12.5 4 4 9-9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>"#);

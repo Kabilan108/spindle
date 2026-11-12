@@ -56,9 +56,10 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
             .child(text("Nothing playing").font(font::ROW_SUB).color(p.faint));
     };
     let album = track.album.as_ref().map(|a| a.uri.clone()).filter(|uri| !uri.is_empty());
-    let mut cover = art(&s.art, &s.link, track.image_url.as_deref(), 52.0, 6.0, p, &icons::NOTE).key("now-art");
+    let episode = track.uri.starts_with("spotify:episode:");
+    let mut cover = art(&s.art, &s.link, track.image_url.as_deref(), 52.0, 6.0, p, if episode { &icons::PODCAST } else { &icons::NOTE }).key("now-art");
     if let Some(album) = album.clone() {
-        cover = cover.cursor(Cursor::Pointer).role("link").label("Open album").on_press(move |s: &mut Main| s.open(&album));
+        cover = cover.cursor(Cursor::Pointer).role("link").label(if episode { "Open show" } else { "Open album" }).on_press(move |s: &mut Main| s.open(&album));
     }
     let mut title = text(track.name.clone()).key("now-title").font(font::ROW_TITLE).color(p.text).truncate();
     if let Some(album) = album {
@@ -67,7 +68,7 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
     let uri = track.uri.clone();
     let liked = f.liked;
     let heart = if liked { &icons::HEART_FILLED } else { &icons::HEART };
-    row()
+    let now = row()
         .key("now")
         .w(SIDE_W)
         .gap(12.0)
@@ -79,12 +80,16 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
                 .min_w(0.0)
                 .gap(2.0)
                 .child(title)
-                .child(text(track.artist_line()).font(font::ROW_SUB).color(p.muted).truncate()),
-        )
-        .child(
-            icon_button("now-like", if liked { "Remove from Liked Songs" } else { "Save to Liked Songs" }, heart, 30.0, if liked { p.accent } else { p.muted }, p)
-                .on_press(move |s: &mut Main| s.set_liked(&uri, !liked)),
-        )
+                .child(text(track.artist_line()).key("now-artist").font(font::ROW_SUB).color(p.muted).truncate()),
+        );
+    // Liked Songs holds songs only.
+    if episode {
+        return now;
+    }
+    now.child(
+        icon_button("now-like", if liked { "Remove from Liked Songs" } else { "Save to Liked Songs" }, heart, 30.0, if liked { p.accent } else { p.muted }, p)
+            .on_press(move |s: &mut Main| s.set_liked(&uri, !liked)),
+    )
 }
 
 /// A toggle's icon, in the accent with a dot under it while on.

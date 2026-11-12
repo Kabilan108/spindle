@@ -4,7 +4,8 @@
 //! ```sh
 //! cargo run --features spotify --bin baliset-engine
 //! login | play | next | prev | seek MS | vol 0.5 | shuffle on|off
-//! ctx URI [TRACK_URI] | load URI | search WORDS | like URI | unlike URI | refresh | state | logout | quit
+//! ctx URI [TRACK_URI] | load URI | search WORDS | like URI | unlike URI | follow URI | unfollow URI
+//! refresh | state | logout | quit
 //! ```
 #![allow(dead_code)]
 
@@ -27,7 +28,7 @@ fn summary(store: &Store) -> String {
         Loadable::Failed(error) => format!("failed: {error}"),
     };
     format!(
-        "session {:?} | {} {} at {} ms, active {}, loading {}, vol {:.2}, shuffle {}, repeat {:?}, context {:?} | playlists {}, albums {}, recents {}, liked {}, pages {} | notice {:?}",
+        "session {:?} | {} {} at {} ms, active {}, loading {}, vol {:.2}, shuffle {}, repeat {:?}, context {:?} | playlists {}, albums {}, recents {}, liked {}, pages {}, shows {}, artists {}, episode positions {} | notice {:?}",
         store.session,
         if playback.playing { "playing" } else { "paused" },
         track,
@@ -43,6 +44,9 @@ fn summary(store: &Store) -> String {
         store.recents.len(),
         store.liked.len(),
         store.pages.len(),
+        load(&store.shows),
+        load(&store.artists),
+        store.episode_progress.len(),
         store.notice,
     )
 }
@@ -56,7 +60,8 @@ fn detail(store: &Store) {
             Loadable::Ready(page) => {
                 println!("  page {uri}: {} with {} tracks, {} albums, truncated {}", page.summary.name, page.tracks.len(), page.albums.len(), page.truncated);
                 for track in page.tracks.iter().take(5) {
-                    println!("    {} by {} [{}] liked {}", track.name, track.artist_line(), track.uri, store.liked.contains(&track.uri));
+                    let released = store.details.get(&track.uri).and_then(|d| d.released);
+                    println!("    {} by {} [{}] {} ms, liked {}, released {released:?}", track.name, track.artist_line(), track.uri, track.duration_ms, store.liked.contains(&track.uri));
                 }
             }
             other => println!("  page {uri}: {other:?}"),
@@ -106,6 +111,8 @@ fn main() -> std::io::Result<()> {
             "search" => Command::Search { query: rest },
             "like" => Command::SetLiked { uri: rest, liked: true },
             "unlike" => Command::SetLiked { uri: rest, liked: false },
+            "follow" => Command::SetFollowed { uri: rest, followed: true },
+            "unfollow" => Command::SetFollowed { uri: rest, followed: false },
             "refresh" => Command::RefreshLibrary,
             "state" => {
                 engine.read(|store| {

@@ -11,7 +11,12 @@ use serde_json::{Value, json};
 
 use super::catalog::{BATCH, Catalog};
 use crate::engine::Shared;
-use crate::model::{ContextKind, ContextPage, ContextSummary, LIKED_URI, Loadable, Search, SearchResults, SessionState, Store, Track};
+use crate::model::{ContextKind, ContextPage, ContextSummary, EPISODES_URI, LIKED_URI, Loadable, Search, SearchResults, SessionState, Store, Track};
+
+mod podcasts;
+mod progress;
+
+use podcasts::episodes_summary;
 
 /// Pages stop here; a longer playlist is marked truncated.
 const MAX_TRACKS: usize = 5000;
@@ -31,13 +36,19 @@ pub(super) fn kind_of(uri: &str) -> ContextKind {
         ["spotify", "artist", _] => ContextKind::Artist,
         ["spotify", "show", _] => ContextKind::Show,
         ["spotify", "collection"] | ["spotify", "user", _, "collection"] => ContextKind::Liked,
+        ["spotify", "collection", "your-episodes"] | ["spotify", "user", _, "collection", "your-episodes"] => ContextKind::Episodes,
         _ => ContextKind::Other,
     }
 }
 
 /// Liked Songs plays as `spotify:user:<name>:collection`; the store calls it [`LIKED_URI`].
+/// Saved episodes likewise become [`EPISODES_URI`].
 pub(super) fn normalize_context(uri: &str) -> String {
-    if kind_of(uri) == ContextKind::Liked { LIKED_URI.to_owned() } else { uri.to_owned() }
+    match kind_of(uri) {
+        ContextKind::Liked => LIKED_URI.to_owned(),
+        ContextKind::Episodes => EPISODES_URI.to_owned(),
+        _ => uri.to_owned(),
+    }
 }
 
 /// The context a search plays as, which is also how its tracks are found.
@@ -77,10 +88,15 @@ fn known_summary(store: &Store, uri: &str) -> Option<ContextSummary> {
     if uri == LIKED_URI {
         return Some(liked_summary());
     }
+    if uri == EPISODES_URI {
+        return Some(episodes_summary());
+    }
     let in_list = |list: &[ContextSummary]| list.iter().find(|s| s.uri == uri).cloned();
     in_list(&store.recents)
         .or_else(|| store.playlists.ready().and_then(|list| in_list(list)))
         .or_else(|| store.albums.ready().and_then(|list| in_list(list)))
+        .or_else(|| store.shows.ready().and_then(|list| in_list(list)))
+        .or_else(|| store.artists.ready().and_then(|list| in_list(list)))
         .or_else(|| store.pages.get(uri).and_then(Loadable::ready).map(|page| page.summary.clone()))
         .or_else(|| store.pages.values().filter_map(Loadable::ready).find_map(|page| in_list(&page.albums)))
         .or_else(|| {
@@ -164,6 +180,7 @@ pub(super) struct Library {
     liked_writes: tokio::sync::Mutex<()>,
     /// The newest like or unlike asked for each track; only it may undo itself on failure.
     liked_asks: Mutex<HashMap<String, u64>>,
+    progress: progress::Progress,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -173,8 +190,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 impl Library {
     pub(super) fn new(shared: Arc<Shared>, recents_path: PathBuf) -> Self {
         Self {
-            shared,
-            recents_path,
             catalog: Mutex::new(None),
             search: AtomicU64::new(0),
             played_here: Mutex::new(Vec::new()),
@@ -182,6 +197,9 @@ impl Library {
             liked: Mutex::new(Liked::default()),
             liked_writes: tokio::sync::Mutex::new(()),
             liked_asks: Mutex::new(HashMap::new()),
+            progress: progress::Progress::open(shared.clone(), recents_path.with_file_name("episodes.json")),
+            shared,
+            recents_path,
         }
     }
 
@@ -196,6 +214,7 @@ impl Library {
         lock(&self.tracks).clear();
         *lock(&self.liked) = Liked::default();
         lock(&self.liked_asks).clear();
+        self.progress.forget();
         if let Err(error) = std::fs::remove_file(&self.recents_path) {
             log::debug!("no saved recents to remove: {error}");
         }
@@ -230,7 +249,13 @@ impl Library {
             let known = lock(&self.tracks);
             uris.iter().filter(|uri| !known.contains_key(*uri)).cloned().collect()
         };
-        let fetched = if missing.is_empty() { HashMap::new() } else { catalog.tracks(&missing).await.map_err(|e| e.to_string())? };
+        let fetched = if missing.is_empty() {
+            HashMap::new()
+        } else {
+            let mut fetched = catalog.tracks(&missing).await.map_err(|e| e.to_string())?;
+            fetched.extend(self.describe_episodes(catalog, &missing).await?);
+            fetched
+        };
         let mut known = lock(&self.tracks);
         if known.len() + fetched.len() > MAX_REMEMBERED_TRACKS {
             known.clear();
@@ -243,7 +268,7 @@ impl Library {
         let Ok(catalog) = self.catalog() else { return };
         // First, so the user's own playlists are labelled with their name.
         let name = self.load_profile(&catalog).await;
-        tokio::join!(self.load_playlists(&catalog, name.as_deref()), self.load_collection(&catalog), self.load_recents(&catalog));
+        tokio::join!(self.load_playlists(&catalog, name.as_deref()), self.load_collection(&catalog), self.load_recents(&catalog), self.load_follows(&catalog));
     }
 
     async fn load_profile(&self, catalog: &Catalog) -> Option<String> {
@@ -345,7 +370,9 @@ impl Library {
             ContextKind::Playlist => catalog.playlist_summary(uri).await.map(Some),
             ContextKind::Album => catalog.albums(&[uri.to_owned()]).await.map(|mut albums| albums.pop()),
             ContextKind::Artist => catalog.artist(uri, 0).await.map(|artist| Some(artist.summary)),
-            ContextKind::Liked | ContextKind::Show | ContextKind::Other => return None,
+            ContextKind::Show => catalog.show(uri).await.map(|show| Some(show.summary)),
+            ContextKind::Episodes => return Some(episodes_summary()),
+            ContextKind::Liked | ContextKind::Other => return None,
         };
         match fetched {
             Ok(summary) => summary.filter(|summary| !summary.name.is_empty()),
@@ -393,7 +420,7 @@ impl Library {
 
     /// A context started playing on this device: it leads the recents.
     pub(super) async fn note_played(self: Arc<Self>, uri: String) {
-        if !matches!(kind_of(&uri), ContextKind::Playlist | ContextKind::Album | ContextKind::Artist | ContextKind::Liked) {
+        if !matches!(kind_of(&uri), ContextKind::Playlist | ContextKind::Album | ContextKind::Artist | ContextKind::Liked | ContextKind::Show | ContextKind::Episodes) {
             return;
         }
         {
@@ -485,7 +512,9 @@ impl Library {
                 ContextKind::Album => self.load_album(&catalog, &uri).await,
                 ContextKind::Artist => self.load_artist(&catalog, &uri).await,
                 ContextKind::Liked => self.load_liked(&catalog).await,
-                ContextKind::Show | ContextKind::Other => Err("Baliset can't open this yet".to_owned()),
+                ContextKind::Show => self.load_show(&catalog, &uri).await,
+                ContextKind::Episodes => self.load_saved_episodes(&catalog).await,
+                ContextKind::Other => Err("Baliset can't open this yet".to_owned()),
             },
             Err(offline) => Err(offline),
         };
@@ -683,6 +712,9 @@ mod tests {
             ("spotify:artist:0TnOYISbd1XYRBk9myaseg", ContextKind::Artist),
             ("spotify:user:someone:collection", ContextKind::Liked),
             ("spotify:collection", ContextKind::Liked),
+            ("spotify:show:01A062kejnXFkJE01bjN5J", ContextKind::Show),
+            ("spotify:collection:your-episodes", ContextKind::Episodes),
+            ("spotify:user:someone:collection:your-episodes", ContextKind::Episodes),
             ("spotify:search:query", ContextKind::Other),
         ];
         for (uri, kind) in cases {
@@ -690,6 +722,7 @@ mod tests {
         }
         assert_eq!(normalize_context("spotify:user:someone:collection"), LIKED_URI);
         assert_eq!(normalize_context("spotify:album:a"), "spotify:album:a");
+        assert_eq!(normalize_context("spotify:user:someone:collection:your-episodes"), EPISODES_URI);
     }
 
     #[test]

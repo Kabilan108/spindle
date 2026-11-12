@@ -40,7 +40,7 @@ use self::auth::Login;
 use self::http::Http;
 use self::library::Library;
 use super::{Backend, Shared};
-use crate::model::{Command, LIKED_URI, Loadable, NamedRef, Playback, Repeat, Search, SessionState, Track};
+use crate::model::{Command, EPISODES_URI, LIKED_URI, Loadable, NamedRef, Playback, Repeat, Search, SessionState, Track};
 
 const AUDIO_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -492,6 +492,7 @@ impl Online<'_> {
 
     /// Silence the player and give the device a moment to tell Spotify it's leaving.
     async fn stop(&self, spirc: &Spirc, device: Pin<Box<dyn Future<Output = ()>>>) {
+        self.note_episode_position();
         if let Some(player) = &self.player {
             player.stop();
         }
@@ -512,9 +513,18 @@ impl Online<'_> {
         });
     }
 
+    /// An episode playing here keeps the place it reached, for the next time it's played.
+    fn note_episode_position(&self) {
+        let reached = self.shared.read(|store| store.playback.track.as_ref().map(|t| (t.uri.clone(), store.playback.position_now(), t.duration_ms)));
+        if let Some((uri, position_ms, duration_ms)) = reached {
+            self.library.episode_left_at(&uri, position_ms, duration_ms);
+        }
+    }
+
     fn player_event(&self, event: PlayerEvent) {
         match event {
             PlayerEvent::TrackChanged { audio_item } => {
+                self.note_episode_position();
                 let track = track_of(&audio_item);
                 let uri = track.uri.clone();
                 self.shared.update(|store| {
@@ -536,14 +546,27 @@ impl Online<'_> {
                 store.playback.position_ms = position_ms;
                 store.playback.position_at = Instant::now();
             }),
-            PlayerEvent::Paused { position_ms, .. } => self.shared.update(|store| {
-                store.playback.playing = false;
-                store.playback.loading = false;
-                store.playback.position_ms = position_ms;
-                store.playback.position_at = Instant::now();
-            }),
+            PlayerEvent::Paused { position_ms, .. } => {
+                self.shared.update(|store| {
+                    store.playback.playing = false;
+                    store.playback.loading = false;
+                    store.playback.position_ms = position_ms;
+                    store.playback.position_at = Instant::now();
+                });
+                self.note_episode_position();
+            }
+            PlayerEvent::EndOfTrack { track_id, .. } => {
+                let uri = track_id.to_uri().unwrap_or_default();
+                let duration = self.shared.read(|store| store.playback.track.as_ref().filter(|t| t.uri == uri).map(|t| t.duration_ms));
+                if let Some(duration_ms) = duration {
+                    self.library.episode_left_at(&uri, duration_ms, duration_ms);
+                }
+            }
             PlayerEvent::Seeked { position_ms, .. } | PlayerEvent::PositionCorrection { position_ms, .. } => self.position(position_ms),
-            PlayerEvent::Stopped { .. } => self.shared.update(|store| store.playback.halt()),
+            PlayerEvent::Stopped { .. } => {
+                self.note_episode_position();
+                self.shared.update(|store| store.playback.halt());
+            }
             PlayerEvent::Unavailable { .. } => self.shared.update(|store| {
                 store.playback.loading = false;
                 store.notice = Some("That track can't be played here.".to_owned());
@@ -558,10 +581,13 @@ impl Online<'_> {
                 };
             }),
             PlayerEvent::SessionConnected { .. } => self.shared.update(|store| store.playback.active = true),
-            PlayerEvent::SessionDisconnected { .. } => self.shared.update(|store| {
-                store.playback.active = false;
-                store.playback.halt();
-            }),
+            PlayerEvent::SessionDisconnected { .. } => {
+                self.note_episode_position();
+                self.shared.update(|store| {
+                    store.playback.active = false;
+                    store.playback.halt();
+                });
+            }
             _ => {}
         }
     }
@@ -572,6 +598,7 @@ impl Online<'_> {
         if cluster.active_device_id != self.session.device_id() {
             let was_active = self.shared.read(|store| store.playback.active);
             if was_active {
+                self.note_episode_position();
                 self.shared.update(|store| {
                     store.playback.active = false;
                     store.playback.halt();
@@ -620,10 +647,14 @@ impl Online<'_> {
             Command::SetShuffle(shuffle) => spirc.shuffle(shuffle),
             Command::SetRepeat(repeat) => spirc.repeat(repeat != Repeat::Off).and_then(|()| spirc.repeat_track(repeat == Repeat::Track)),
             Command::PlayContext { uri, track_uri } => {
-                let context = if uri == LIKED_URI { format!("spotify:user:{}:collection", self.session.username()) } else { uri.clone() };
+                let context = match uri.as_str() {
+                    LIKED_URI => format!("spotify:user:{}:collection", self.session.username()),
+                    EPISODES_URI => format!("spotify:user:{}:collection:your-episodes", self.session.username()),
+                    _ => uri.clone(),
+                };
                 let options = LoadRequestOptions {
                     start_playing: true,
-                    seek_to: 0,
+                    seek_to: track_uri.as_deref().map_or(0, |track| self.library.resume_at(track)),
                     context_options: Some(LoadContextOptions::Options(Options { shuffle, repeat: repeat != Repeat::Off, repeat_track: repeat == Repeat::Track })),
                     playing_track: track_uri.map(PlayingTrack::Uri),
                 };
@@ -637,7 +668,7 @@ impl Online<'_> {
             Command::PlayTracks { uris, index } => {
                 let options = LoadRequestOptions {
                     start_playing: true,
-                    seek_to: 0,
+                    seek_to: uris.get(index).map_or(0, |track| self.library.resume_at(track)),
                     context_options: None,
                     playing_track: Some(PlayingTrack::Index(u32::try_from(index).unwrap_or(0))),
                 };
@@ -665,6 +696,10 @@ impl Online<'_> {
             }
             Command::DismissNotice => {
                 self.shared.update(|store| store.notice = None);
+                Ok(())
+            }
+            Command::SetFollowed { uri, followed } => {
+                tokio::spawn(self.library.clone().set_followed(uri, followed));
                 Ok(())
             }
         };

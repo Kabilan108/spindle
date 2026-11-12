@@ -10,6 +10,8 @@ use crate::model::{
     SessionState, Store, Track,
 };
 
+mod podcasts;
+
 const ALBUMS: &[(&str, &str, &[&str])] = &[
     ("Low Tide Radio", "Marlowe & The Estuary", &["Harbour Lights", "Saltwater Static", "Slack Water", "Tin Roof Rain", "Nightferry", "Driftwood Choir", "Last Buoy Out"]),
     ("Paper Lanterns", "Ines Calder", &["Paper Lanterns", "Borrowed Coat", "Seventeen Stairs", "Good Glass", "Small Hours, Big Sky", "Hollow Reed"]),
@@ -111,6 +113,9 @@ fn page(uri: &str) -> Option<ContextPage> {
     if uri == LIKED_URI {
         return Some(ContextPage { summary: liked_summary(), tracks: liked_tracks(), albums: Vec::new(), truncated: false });
     }
+    if let Some(page) = podcasts::page(uri) {
+        return Some(page);
+    }
     if let Some(i) = index("spotify:album:demo", ALBUMS.len()) {
         return Some(ContextPage { summary: album_summary(i), tracks: album_tracks(i), albums: Vec::new(), truncated: false });
     }
@@ -189,10 +194,14 @@ pub(super) fn start(shared: Arc<Shared>) -> Arc<dyn Backend> {
     shared.update(|store| {
         *store = Store {
             session: SessionState::Online { user: "kabilan".into() },
-            recents: vec![playlist_summary(0), album_summary(2), playlist_summary(2), album_summary(0), artist_summary(3), playlist_summary(5)],
+            recents: vec![playlist_summary(0), album_summary(2), podcasts::show_summary(0), playlist_summary(2), album_summary(0), artist_summary(3), playlist_summary(5)],
             playlists: Loadable::Ready((0..PLAYLISTS.len()).map(playlist_summary).collect()),
             albums: Loadable::Ready((0..ALBUMS.len()).map(album_summary).collect()),
             liked: liked_tracks().into_iter().map(|t| t.uri).collect(),
+            shows: Loadable::Ready(podcasts::shows()),
+            artists: Loadable::Ready(podcasts::FOLLOWED_ARTISTS.iter().map(|&i| artist_summary(i)).collect()),
+            details: podcasts::details().into_iter().collect(),
+            episode_progress: podcasts::progress().into_iter().collect(),
             ..Store::default()
         };
         store.playback.track = queue.tracks.get(queue.index).cloned();
@@ -278,7 +287,7 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
             start_queue(store, queue, page.tracks, index, Some(uri));
         }
         Command::PlayTracks { uris, index } => {
-            let all: Vec<Track> = (0..ALBUMS.len()).flat_map(album_tracks).collect();
+            let all: Vec<Track> = (0..ALBUMS.len()).flat_map(album_tracks).chain(podcasts::all_episodes()).collect();
             let tracks = uris.iter().filter_map(|uri| all.iter().find(|t| &t.uri == uri).cloned()).collect();
             start_queue(store, queue, tracks, index, None);
         }
@@ -299,5 +308,18 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
             }
         }
         Command::DismissNotice => store.notice = None,
+        Command::SetFollowed { uri, followed } => {
+            let summary = page(&uri).map(|page| page.summary);
+            let list = match summary.as_ref().map(|s| s.kind) {
+                Some(ContextKind::Show) => &mut store.shows,
+                Some(ContextKind::Artist) => &mut store.artists,
+                _ => return,
+            };
+            let Some(list) = list.ready_mut() else { return };
+            list.retain(|item| item.uri != uri);
+            if let (true, Some(summary)) = (followed, summary) {
+                list.insert(0, summary);
+            }
+        }
     }
 }

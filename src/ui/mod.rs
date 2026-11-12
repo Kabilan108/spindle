@@ -7,6 +7,7 @@ pub mod icons;
 mod link;
 mod meter;
 mod page;
+mod podcast;
 mod scenes;
 mod search;
 mod session;
@@ -76,6 +77,8 @@ pub struct Main {
     home: Cell<HomeGrid>,
     /// The sidebar's sign-out button was pressed once and is asking to be pressed again.
     pub confirming_sign_out: bool,
+    /// Which part of the library the sidebar lists.
+    pub shelf: sidebar::Shelf,
 }
 
 impl Main {
@@ -97,6 +100,7 @@ impl Main {
             dark: Cell::new(true),
             home: Cell::new(HomeGrid::default()),
             confirming_sign_out: false,
+            shelf: sidebar::Shelf::default(),
         }
     }
 
@@ -270,6 +274,7 @@ fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El 
     let pane = match &s.route {
         Route::Home => home::view(s, cx, p),
         Route::Search => search::view(s, cx, p),
+        Route::Context(uri) if podcast::draws(uri) => podcast::view(s, cx, p, uri),
         Route::Context(uri) => page::view(s, cx, p, uri),
     };
     let mut root = col().key("shell").w_full().h_full();
