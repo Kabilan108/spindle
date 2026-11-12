@@ -467,8 +467,19 @@ fn an_albums_artist_and_a_rows_artist_open_the_artist_page() {
     let artist = rt.state.link.read(|store| store.pages[ALBUM].ready().unwrap().tracks[0].artists[0].uri.clone());
     click(&mut rt, "page-owner");
     assert_eq!(rt.state.route, super::Route::Context(artist.clone()));
-    rt.state.open(ALBUM);
+    rt.update(|s, _| s.open(ALBUM));
     frames(&mut rt, 2);
     click(&mut rt, "artist1");
     assert_eq!(rt.state.route, super::Route::Context(artist));
+}
+
+#[test]
+fn an_episodes_menu_offers_its_show_and_nothing_songs_only() {
+    const SHOW: &str = "spotify:show:demo0";
+    let (mut rt, _log) = window(|s| s.open(SHOW));
+    engine_answered(&mut rt, |store| matches!(store.pages.get(SHOW), Some(Loadable::Ready(_))));
+    right_click(&mut rt, "trk1");
+    assert!(menu_open(&rt));
+    assert!(element(&rt, "Add to queue").is_some() && element(&rt, "Go to show").is_some());
+    assert!(element(&rt, "Go to song radio").is_none() && element(&rt, "Add to playlist").is_none() && element(&rt, "Save to Liked Songs").is_none());
 }

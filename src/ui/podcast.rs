@@ -281,6 +281,7 @@ fn episode_row(s: &Main, uri: &str, i: usize, saved: bool) -> El {
             .on_press(move |s: &mut Main| if playing_this { s.link.send(Command::PlayPause) } else { play(s) })
             .child(icon(if pause_here { &icons::PAUSE } else { &icons::PLAY }, 15.0).color(if playing_this { p.on_accent } else { p.text }))
     };
+    let menu_uri = uri.to_owned();
     let r = row()
         .h(EPISODE_ROW_H)
         .px(10.0)
@@ -296,7 +297,12 @@ fn episode_row(s: &Main, uri: &str, i: usize, saved: bool) -> El {
         .on_press(move |s: &mut Main| s.selected = Some(i))
         .child(art(&s.art, &s.link, t.image_url.as_deref(), ROW_ART, 6.0, p, &icons::PODCAST))
         .child(titles)
-        .child(button);
+        .child(button)
+        .on_secondary_press(move |s: &mut Main, press: rune::PointerPress, _: &mut Tx| {
+            s.selected = Some(i);
+            let target = s.link.read(|store| super::menu::page_target(store, &menu_uri, i));
+            s.open_menu(target, super::menu::At::from(press));
+        });
     if t.playable { r.on_double_press(play) } else { r.opacity(0.45) }
 }
 

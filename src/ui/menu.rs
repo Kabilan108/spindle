@@ -195,6 +195,13 @@ fn track_menu(menu: Menu, store: &Store, target: &TrackTarget, picking: bool) ->
     if let Some(index) = target.in_queue {
         menu = menu.item(item("Remove from queue", &icons::MINUS, move |s| s.link.send(Command::RemoveFromQueue { index })));
     }
+    let album = track.album.as_ref().map(|album| album.uri.clone()).filter(|album| !album.is_empty());
+    if uri.starts_with("spotify:episode:") {
+        if let Some(show) = album {
+            menu = menu.separator().item(item("Go to show", &icons::PODCAST, move |s| s.open(&show)));
+        }
+        return menu;
+    }
     let seed = uri.clone();
     menu = menu.item(item("Go to song radio", &icons::RADIO, move |s| s.go_radio(&seed))).separator();
     menu = menu.item(MenuItem::new("Add to playlist").icon(&icons::PLUS).on_select_tx(|s: &mut Main, tx: &mut rune::Tx| {
@@ -216,7 +223,6 @@ fn track_menu(menu: Menu, store: &Store, target: &TrackTarget, picking: bool) ->
             .danger(true),
         );
     }
-    let album = track.album.as_ref().map(|album| album.uri.clone()).filter(|album| !album.is_empty());
     let artists: Vec<(String, String)> = track.artists.iter().filter(|a| !a.uri.is_empty()).map(|a| (a.uri.clone(), a.name.clone())).take(3).collect();
     if album.is_some() || !artists.is_empty() {
         menu = menu.separator();
