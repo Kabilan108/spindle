@@ -124,9 +124,14 @@ impl Zoom {
 
 /// `root` holding `body` drawn at the zoom, and the indicator while it shows. `root` must be
 /// keyed "root" and fill the window.
+/// The scale the stage is drawn at: the chosen level, or less when the window can't fit it.
+pub fn factor(s: &Main, cx: &mut Cx<Main>) -> f32 {
+    cx.layout_size("root").map_or(s.zoom.level, |size| fitted(s.zoom.level, size))
+}
+
 pub fn frame(s: &Main, cx: &mut Cx<Main>, p: Palette, root: El, body: El) -> El {
     let size = cx.layout_size("root");
-    let k = size.map_or(s.zoom.level, |size| fitted(s.zoom.level, size));
+    let k = factor(s, cx);
     let stage = col().key("zoomed").absolute(0.0, 0.0).scale(k).origin(0.0, 0.0);
     let stage = match size {
         Some([w, h]) => stage.size(w / k, h / k),

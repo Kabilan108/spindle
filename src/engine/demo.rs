@@ -432,8 +432,8 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
                 skip(store, queue, at as isize + 1);
             }
         }
-        Command::RemoveFromQueue { index } => {
-            if index < queue.queued.len() {
+        Command::RemoveFromQueue { index, uri } => {
+            if queue.queued.get(index).is_some_and(|track| track.uri == uri) {
                 queue.queued.remove(index);
             }
         }

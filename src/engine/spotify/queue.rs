@@ -16,6 +16,7 @@ use librespot_protocol::connect::Cluster;
 use librespot_protocol::player::{PlayerState, ProvidedTrack};
 use protobuf::Message;
 use serde_json::{Map, Value, json};
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 
 use super::library::Library;
 use crate::engine::Shared;
@@ -56,9 +57,12 @@ impl Snapshot {
         self.next.iter().any(|track| track.uri == uri)
     }
 
-    /// The queue without its `index`th queued track, or `None` when there is no such track.
-    pub(super) fn without_queued(&self, index: usize) -> Option<Vec<ProvidedTrack>> {
-        let position = self.next.iter().enumerate().filter(|(_, track)| is_track(track) && is_queued(track)).nth(index)?.0;
+    /// The queue without the queued track `uri`: the `index`th queued track when that is the
+    /// one, else the first queued track with that URI. `None` when it isn't queued any more.
+    pub(super) fn without_queued(&self, index: usize, uri: &str) -> Option<Vec<ProvidedTrack>> {
+        let queued: Vec<usize> = self.next.iter().enumerate().filter(|(_, track)| is_track(track) && is_queued(track)).map(|(at, _)| at).collect();
+        let named = |at: &usize| self.next[*at].uri == uri;
+        let position = queued.get(index).copied().filter(named).or_else(|| queued.iter().copied().find(named))?;
         let mut next = self.next.clone();
         next.remove(position);
         Some(next)
@@ -107,14 +111,39 @@ async fn cluster(session: &Session) -> Result<Cluster, Error> {
 /// cluster back after changes made here. Cheap to share.
 pub(super) struct Watch {
     snapshot: Mutex<Snapshot>,
+    /// Changes made here, applied one at a time in the order they were asked for.
+    changes: UnboundedSender<Change>,
     library: Arc<Library>,
     session: Session,
     shared: Arc<Shared>,
 }
 
+/// Builds a player command from the queue, or declines.
+type Build = Box<dyn FnOnce(&Snapshot) -> Option<Value> + Send>;
+
+/// One change to the queue: a command built from the queue as the device holds it when its
+/// turn comes, or nothing when it no longer applies.
+struct Change {
+    failure: &'static str,
+    command: Build,
+}
+
 impl Watch {
-    pub(super) fn new(library: Arc<Library>, session: Session, shared: Arc<Shared>) -> Arc<Self> {
-        Arc::new(Self { snapshot: Mutex::new(Snapshot::default()), library, session, shared })
+    /// `settle` is how long librespot gets to publish a change before it is read back.
+    pub(super) fn new(library: Arc<Library>, session: Session, shared: Arc<Shared>, settle: Duration) -> Arc<Self> {
+        let (changes, mut asked) = unbounded_channel::<Change>();
+        let watch = Arc::new(Self { snapshot: Mutex::new(Snapshot::default()), changes, library, session, shared });
+        let worker = Arc::downgrade(&watch);
+        tokio::spawn(async move {
+            while let Some(change) = asked.recv().await {
+                let Some(watch) = worker.upgrade() else { break };
+                if let Err(error) = watch.apply(settle, change.command).await {
+                    log::warn!("{}: {error}", change.failure);
+                    watch.shared.update(|store| store.notice = Some(format!("{}: {error}", change.failure)));
+                }
+            }
+        });
+        watch
     }
 
     pub(super) fn snapshot(&self) -> MutexGuard<'_, Snapshot> {
@@ -142,17 +171,53 @@ impl Watch {
         self.library.clear_up_next();
     }
 
+    /// Read the cluster now. `false` when another device plays, or none.
+    async fn read(&self) -> Result<bool, Error> {
+        let cluster = cluster(&self.session).await?;
+        let here = cluster.active_device_id == self.session.device_id();
+        if here {
+            self.report(&cluster.player_state);
+        } else {
+            self.clear();
+        }
+        Ok(here)
+    }
+
     /// Read the cluster back after `delay`, once librespot has had time to publish a change.
     pub(super) fn reread(self: &Arc<Self>, delay: Duration) {
         let watch = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(delay).await;
-            match cluster(&watch.session).await {
-                Ok(cluster) if cluster.active_device_id == watch.session.device_id() => watch.report(&cluster.player_state),
-                Ok(_) => watch.clear(),
-                Err(error) => log::info!("can't read the queue back: {error}"),
+            if let Err(error) = watch.read().await {
+                log::info!("can't read the queue back: {error}");
             }
         });
+    }
+
+    /// Ask for a change to the queue. Changes are applied in the order asked, each built
+    /// from the queue as the device holds it then and read back before the next, so two made
+    /// in a hurry can't be built from the same stale queue. A failure shows as a notice
+    /// starting with `failure`.
+    pub(super) fn change(&self, failure: &'static str, command: impl FnOnce(&Snapshot) -> Option<Value> + Send + 'static) {
+        if self.changes.send(Change { failure, command: Box::new(command) }).is_err() {
+            log::debug!("no queue change: the session has ended");
+        }
+    }
+
+    async fn apply(&self, settle: Duration, command: Build) -> Result<(), Error> {
+        if !self.read().await? {
+            log::debug!("no queue change: this device isn't the one playing");
+            return Ok(());
+        }
+        let body = command(&self.snapshot());
+        let Some(body) = body else {
+            log::debug!("no queue change: it no longer applies");
+            return Ok(());
+        };
+        log::debug!("queue change: {}", body["command"]["endpoint"]);
+        send(&self.session, &body).await?;
+        tokio::time::sleep(settle).await;
+        self.read().await.map(|_| ())
     }
 }
 
@@ -200,13 +265,14 @@ mod tests {
     #[test]
     fn set_queue_carries_the_tracks_and_the_revision_it_replaces() {
         let snapshot = Snapshot { next: vec![provided("spotify:track:q", "queue"), provided("spotify:track:c", "context")], prev: vec![provided("spotify:track:p", "context")], revision: "42".into() };
-        let next = snapshot.without_queued(0).unwrap();
+        let next = snapshot.without_queued(0, "spotify:track:q").unwrap();
         let Command::SetQueue(set) = read_back(&set_queue(&next, &snapshot)) else { panic!("set_queue") };
         assert_eq!(set.next_tracks.iter().map(|t| t.uri.as_str()).collect::<Vec<_>>(), ["spotify:track:c"]);
         assert_eq!(set.next_tracks[0].uid, "uid-spotify:track:c");
         assert_eq!(set.prev_tracks.len(), 1);
         assert_eq!(set.queue_revision, "42");
-        assert_eq!(snapshot.without_queued(1), None);
+        assert_eq!(snapshot.without_queued(1, "spotify:track:c"), None);
+        assert_eq!(snapshot.without_queued(5, "spotify:track:q").map(|next| next.len()), Some(1), "found by name when the index is stale");
     }
 
     #[test]

@@ -87,7 +87,8 @@ impl Progress {
         self.shared.update(|store| {
             store.episode_progress.insert(uri.to_owned(), progress);
         });
-        if let Err(error) = std::fs::write(&self.path, saved) {
+        let staged = self.path.with_extension("json.tmp");
+        if let Err(error) = std::fs::write(&staged, saved).and_then(|()| std::fs::rename(&staged, &self.path)) {
             log::warn!("can't save episode positions: {error}");
         }
     }

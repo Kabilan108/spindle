@@ -54,3 +54,6 @@ debug = false
 [profile.release]
 codegen-units = 16
 incremental = true
+
+[patch.crates-io]
+librespot-connect = { path = "vendor/librespot-connect" }

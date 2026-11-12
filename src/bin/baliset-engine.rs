@@ -158,7 +158,16 @@ fn main() -> std::io::Result<()> {
             "refresh" => Command::RefreshLibrary,
             "queue" => Command::AddToQueue { uri: rest },
             "skipto" => Command::SkipTo { uri: rest },
-            "unqueue" => Command::RemoveFromQueue { index: rest.parse().unwrap_or(0) },
+            "unqueue" => {
+                let index = rest.parse().unwrap_or(0);
+                match engine.read(|store| store.up_next.queued.get(index).map(|track| track.uri.clone())) {
+                    Some(uri) => Command::RemoveFromQueue { index, uri },
+                    None => {
+                        println!("nothing queued at {index}");
+                        continue;
+                    }
+                }
+            }
             "radio" => Command::LoadRadio { track_uri: rest },
             "shuffled" => Command::PlayShuffled { uri: rest },
             "addto" => {

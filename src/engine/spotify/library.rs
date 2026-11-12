@@ -185,6 +185,9 @@ pub(super) struct Library {
     up_next: AtomicU64,
     /// Playlist changes reach Spotify one at a time, each against the revision before it.
     playlist_writes: tokio::sync::Mutex<()>,
+    /// Counts the accounts this library has served; work begun for one is dropped once it
+    /// has signed out.
+    account: AtomicU64,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -206,6 +209,7 @@ impl Library {
             recents_path,
             up_next: AtomicU64::new(0),
             playlist_writes: tokio::sync::Mutex::new(()),
+            account: AtomicU64::new(0),
         }
     }
 
@@ -214,7 +218,17 @@ impl Library {
     }
 
     /// Forget everything one account loaded, so the next account starts clean.
+    pub(super) fn account(&self) -> u64 {
+        self.account.load(Ordering::SeqCst)
+    }
+
+    /// Whether the account that was signed in at `account` has since signed out.
+    pub(super) fn signed_out_since(&self, account: u64) -> bool {
+        self.account() != account
+    }
+
     pub(super) fn forget_account(&self) {
+        self.account.fetch_add(1, Ordering::SeqCst);
         self.search.fetch_add(1, Ordering::SeqCst);
         lock(&self.played_here).clear();
         lock(&self.tracks).clear();
@@ -721,10 +735,14 @@ impl Library {
             return;
         }
         self.shared.update(|store| store.radios.insert(track_uri.clone(), Loadable::Loading));
+        let account = self.account();
         let found = match self.catalog() {
             Ok(catalog) => catalog.radio(&track_uri).await.map_err(|e| e.to_string()),
             Err(offline) => Err(offline),
         };
+        if self.signed_out_since(account) {
+            return;
+        }
         self.shared.update(|store| match found {
             Ok(radio) => {
                 store.radios.insert(track_uri, Loadable::Ready(radio));
@@ -737,11 +755,18 @@ impl Library {
     }
 
     pub(super) async fn add_to_playlist(self: Arc<Self>, playlist_uri: String, track_uri: String) {
+        let account = self.account();
         let _in_order = self.playlist_writes.lock().await;
+        if self.signed_out_since(account) {
+            return;
+        }
         let added = match self.catalog() {
             Ok(catalog) => catalog.add_to_playlist(&playlist_uri, &track_uri).await.map_err(|e| e.to_string()),
             Err(offline) => Err(offline),
         };
+        if self.signed_out_since(account) {
+            return;
+        }
         if let Err(error) = added {
             self.shared.update(|store| store.notice = Some(format!("Couldn't add to the playlist: {error}")));
             return;
@@ -756,11 +781,18 @@ impl Library {
     }
 
     pub(super) async fn remove_from_playlist(self: Arc<Self>, playlist_uri: String, track_uri: String, index: usize) {
+        let account = self.account();
         let _in_order = self.playlist_writes.lock().await;
+        if self.signed_out_since(account) {
+            return;
+        }
         let removed = match self.catalog() {
             Ok(catalog) => catalog.remove_from_playlist(&playlist_uri, &track_uri, index).await.map_err(|e| e.to_string()),
             Err(offline) => Err(offline),
         };
+        if self.signed_out_since(account) {
+            return;
+        }
         if let Err(error) = removed {
             self.shared.update(|store| store.notice = Some(format!("Couldn't remove from the playlist: {error}")));
             return;

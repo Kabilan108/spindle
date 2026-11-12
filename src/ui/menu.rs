@@ -193,7 +193,8 @@ fn track_menu(menu: Menu, store: &Store, target: &TrackTarget, picking: bool) ->
     let queued = uri.clone();
     menu = menu.item(item("Add to queue", &icons::QUEUE, move |s| s.link.send(Command::AddToQueue { uri: queued.clone() })));
     if let Some(index) = target.in_queue {
-        menu = menu.item(item("Remove from queue", &icons::MINUS, move |s| s.link.send(Command::RemoveFromQueue { index })));
+        let unqueued = uri.clone();
+        menu = menu.item(item("Remove from queue", &icons::MINUS, move |s| s.link.send(Command::RemoveFromQueue { index, uri: unqueued.clone() })));
     }
     let album = track.album.as_ref().map(|album| album.uri.clone()).filter(|album| !album.is_empty());
     if uri.starts_with("spotify:episode:") {
@@ -301,7 +302,11 @@ pub fn layer(s: &Main, cx: &mut Cx<Main>, p: Palette) -> Vec<El> {
     let Some(open) = &s.menu else { return Vec::new() };
     let point = match &open.at {
         At::Point(x, y) => (*x, *y),
-        At::Below(key) => cx.window_layout(key).map_or((240.0, 200.0), |[x, y, _, h]| (x + 24.0, y + h)),
+        // Layout is measured inside the zoomed stage; the menu sits outside it.
+        At::Below(key) => {
+            let k = super::zoom::factor(s, cx);
+            cx.window_layout(key).map_or((240.0, 200.0), |[x, y, _, h]| (x * k + 24.0, (y + h) * k))
+        }
     };
     let anchor = el().key("track-menu-anchor").size(0.0, 0.0);
     let press = PointerPress { x: point.0, y: point.1 };

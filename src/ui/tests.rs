@@ -483,3 +483,29 @@ fn an_episodes_menu_offers_its_show_and_nothing_songs_only() {
     assert!(element(&rt, "Add to queue").is_some() && element(&rt, "Go to show").is_some());
     assert!(element(&rt, "Go to song radio").is_none() && element(&rt, "Add to playlist").is_none() && element(&rt, "Save to Liked Songs").is_none());
 }
+
+#[test]
+fn a_menu_opens_at_the_pointer_or_under_its_row_when_zoomed() {
+    for zoom in [1.0, 1.25] {
+        let (mut rt, _log) = window(|s| {
+            s.zoom = super::zoom::Zoom::preview(zoom, false);
+            s.open("spotify:playlist:demo0");
+        });
+        engine_answered(&mut rt, |store| matches!(store.pages.get("spotify:playlist:demo0"), Some(Loadable::Ready(_))));
+        let menu_at = |rt: &Runtime<Main>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("track-menu-menu")).expect("the menu is open").rect;
+        let (x, y) = rt.find("trk1").expect("the second row is built");
+        right_click(&mut rt, "trk1");
+        let [left, top, ..] = menu_at(&rt);
+        assert!((left - x).abs() < 12.0 && (top - y).abs() < 12.0, "at {zoom}: menu at ({left}, {top}), pointer at ({x}, {y})");
+
+        let row = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("trk1")).expect("the row").rect;
+        rt.update(|s, _| {
+            let target = s.link.read(|store| super::menu::page_target(store, "spotify:playlist:demo0", 1));
+            s.open_menu(target, super::menu::At::Below("trk1".into()));
+        });
+        frames(&mut rt, 20);
+        let [left, top, ..] = menu_at(&rt);
+        let (below, inside) = (row[1] + row[3], left - row[0]);
+        assert!((top - below).abs() < 12.0 && (0.0..60.0).contains(&inside), "at {zoom}: menu at ({left}, {top}), row {row:?}");
+    }
+}

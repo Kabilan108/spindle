@@ -103,7 +103,11 @@ impl Library {
                 return;
             }
         };
+        let account = self.account();
         let summary = if followed { self.summary(&catalog, &uri).await } else { None };
+        if self.signed_out_since(account) {
+            return;
+        }
         if followed && summary.is_none() {
             self.shared.update(|store| store.notice = Some("Couldn't follow: Spotify doesn't know it".to_owned()));
             return;
@@ -114,7 +118,14 @@ impl Library {
             before
         });
         let _in_order = self.liked_writes.lock().await;
-        if let Err(error) = catalog.set_followed(&uri, followed).await {
+        if self.signed_out_since(account) {
+            return;
+        }
+        let written = catalog.set_followed(&uri, followed).await;
+        if self.signed_out_since(account) {
+            return;
+        }
+        if let Err(error) = written {
             self.shared.update(|store| {
                 set_follow(store, &uri, before.as_ref());
                 store.notice = Some(format!("Couldn't update what you follow: {error}"));

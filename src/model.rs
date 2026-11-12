@@ -294,8 +294,8 @@ pub enum Command {
     AddToQueue { uri: String },
     /// Skip ahead to `uri`, a track in [`Store::up_next`].
     SkipTo { uri: String },
-    /// Take the queued track at `index` of [`UpNext::queued`] out of the queue.
-    RemoveFromQueue { index: usize },
+    /// Take the queued track `uri`, shown at `index` of [`UpNext::queued`], out of the queue.
+    RemoveFromQueue { index: usize, uri: String },
     /// Fill `Store::radios[track_uri]` with the URI of the track's radio playlist.
     LoadRadio { track_uri: String },
     /// Add a track to the end of an editable playlist.

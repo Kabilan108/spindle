@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
@@ -319,7 +320,8 @@ async fn run(shared: Arc<Shared>, mut commands: UnboundedReceiver<Command>, http
             session: &session,
             mixer: audio.as_ref().map(|audio| audio.mixer.clone()),
             player: audio.as_ref().map(|audio| audio.player.clone()),
-            queue: queue::Watch::new(library.clone(), session.clone(), shared.clone()),
+            queue: queue::Watch::new(library.clone(), session.clone(), shared.clone(), QUEUE_SETTLE),
+            outgoing_noted: AtomicBool::new(false),
         };
         let ended = online.serve(&mut commands, connected).await;
         library.clear_up_next();
@@ -480,6 +482,8 @@ struct Online<'a> {
     mixer: Option<Arc<dyn Mixer>>,
     player: Option<Arc<Player>>,
     queue: Arc<queue::Watch>,
+    /// A `Loading` for another track already noted where the outgoing one was left.
+    outgoing_noted: AtomicBool,
 }
 
 impl Online<'_> {
@@ -545,7 +549,9 @@ impl Online<'_> {
     fn player_event(&self, event: PlayerEvent) {
         match event {
             PlayerEvent::TrackChanged { audio_item } => {
-                self.note_episode_position();
+                if !self.outgoing_noted.swap(false, Ordering::AcqRel) {
+                    self.note_episode_position();
+                }
                 let track = track_of(&audio_item);
                 let uri = track.uri.clone();
                 self.shared.update(|store| {
@@ -556,11 +562,21 @@ impl Online<'_> {
                 tokio::spawn(self.library.clone().describe_playing(uri));
                 self.queue.reread(QUEUE_SETTLE);
             }
-            PlayerEvent::Loading { position_ms, .. } => self.shared.update(|store| {
-                store.playback.loading = true;
-                store.playback.position_ms = position_ms;
-                store.playback.position_at = Instant::now();
-            }),
+            PlayerEvent::Loading { track_id, position_ms, .. } => {
+                // The position that follows belongs to the track being loaded; where the one
+                // still shown was left is noted first.
+                let incoming = track_id.to_uri().ok();
+                let changes = self.shared.read(|store| store.playback.track.as_ref().map(|track| Some(&track.uri) != incoming.as_ref()));
+                if changes == Some(true) {
+                    self.note_episode_position();
+                    self.outgoing_noted.store(true, Ordering::Release);
+                }
+                self.shared.update(|store| {
+                    store.playback.loading = true;
+                    store.playback.position_ms = position_ms;
+                    store.playback.position_at = Instant::now();
+                });
+            }
             PlayerEvent::Playing { position_ms, .. } => self.shared.update(|store| {
                 store.playback.playing = true;
                 store.playback.loading = false;
@@ -652,19 +668,6 @@ impl Online<'_> {
 
     /// Hand a player command to this device through Connect, in the background, then read
     /// the queue back.
-    fn send_to_self(&self, body: serde_json::Value, failure: &'static str) {
-        let (session, shared, watch) = (self.session.clone(), self.shared.clone(), self.queue.clone());
-        tokio::spawn(async move {
-            match queue::send(&session, &body).await {
-                Ok(()) => watch.reread(QUEUE_SETTLE),
-                Err(error) => {
-                    log::warn!("{failure}: {error}");
-                    shared.update(|store| store.notice = Some(format!("{failure}: {error}")));
-                }
-            }
-        });
-    }
-
     fn play_context(&self, spirc: &Spirc, uri: String, track_uri: Option<String>, options: Options, active: bool) -> Result<(), librespot_core::Error> {
         let context = match uri.as_str() {
             LIKED_URI => format!("spotify:user:{}:collection", self.session.username()),
@@ -757,27 +760,18 @@ impl Online<'_> {
             }
             Command::AddToQueue { uri } => {
                 if active {
-                    self.send_to_self(queue::add_to_queue(&uri), "Couldn't add to the queue");
+                    self.queue.change("Couldn't add to the queue", move |_| Some(queue::add_to_queue(&uri)));
                 } else {
                     self.shared.update(|store| store.notice = Some("Play something here first, then add to the queue.".to_owned()));
                 }
                 Ok(())
             }
             Command::SkipTo { uri } => {
-                // librespot skips until it reaches the track, so it has to be there.
-                if self.queue.snapshot().plays_next(&uri) {
-                    self.send_to_self(queue::skip_to(&uri), "Couldn't skip to that song");
-                }
+                self.queue.change("Couldn't skip to that song", move |queue| queue.plays_next(&uri).then(|| queue::skip_to(&uri)));
                 Ok(())
             }
-            Command::RemoveFromQueue { index } => {
-                let body = {
-                    let snapshot = self.queue.snapshot();
-                    snapshot.without_queued(index).map(|next| queue::set_queue(&next, &snapshot))
-                };
-                if let Some(body) = body {
-                    self.send_to_self(body, "Couldn't change the queue");
-                }
+            Command::RemoveFromQueue { index, uri } => {
+                self.queue.change("Couldn't change the queue", move |queue| queue.without_queued(index, &uri).map(|next| queue::set_queue(&next, queue)));
                 Ok(())
             }
             Command::LoadRadio { track_uri } => {

@@ -160,6 +160,7 @@ impl Main {
         if uri.is_empty() {
             return;
         }
+        self.viz.close_stage();
         let needs_load = self.link.read(|store| matches!(store.pages.get(uri), None | Some(Loadable::Failed(_) | Loadable::Idle)));
         if needs_load {
             self.link.send(Command::LoadContext { uri: uri.to_owned() });
@@ -185,6 +186,7 @@ impl Main {
     }
 
     pub fn go_search(&mut self, focus: bool) {
+        self.viz.close_stage();
         if self.route != Route::Search {
             self.route = Route::Search;
             self.selected = None;
@@ -308,9 +310,10 @@ pub fn main_view(s: &Main, cx: &mut Cx<Main>) -> El {
         SessionState::NeedsLogin { url, error } => session::sign_in(p, url.as_deref(), error.as_deref()),
         SessionState::Online { .. } | SessionState::Offline { .. } => shell(s, cx, p, &session),
     };
+    let root = zoom::frame(s, cx, p, col().key("root").w_full().h_full().fill(p.bg).on_key(main_key), body);
+    // The menu is placed in window coordinates, so it sits outside the zoomed stage.
     let layer = menu::layer(s, cx, p);
-    let body = rune_kit::root(col().key("body").w_full().h_full().child(body), layer);
-    zoom::frame(s, cx, p, col().key("root").w_full().h_full().fill(p.bg).on_key(main_key), body)
+    rune_kit::root(root, layer)
 }
 
 fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El {

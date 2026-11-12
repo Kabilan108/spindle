@@ -112,6 +112,7 @@ nix develop -c cargo run -- --check                        # check every Spotify
 ```
 
 - `src/model.rs`: the store the UI draws and the commands it sends.
+- `vendor/librespot-connect`: librespot's Connect crate with one fix of ours (see its README).
 - `src/engine/`: the engine handle, a demo backend, and `spotify/`, the real one.
 - `src/ui/`, `src/tray.rs`, `src/mpris.rs`: windows, tray icon and MPRIS.
 - `vm/`: a headless QEMU VM of the dotfiles desktop for testing on niri (`vm/README.md`).
