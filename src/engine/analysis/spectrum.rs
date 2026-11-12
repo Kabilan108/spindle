@@ -10,9 +10,9 @@ use super::analyzer::{BANDS, F_HI, F_LO};
 
 pub const WINDOW: usize = 2048;
 pub const RATE: f32 = 44_100.0;
-/// Lifts typical music, about 20 dB under the full-scale tones the analyzer's range assumes,
-/// into the middle of that range.
-const GAIN: f32 = 60.0;
+/// Lifts typical mastered music, whose bands sit about 24 dB under the full-scale tones the
+/// analyzer's range assumes, into the upper middle of that range.
+const GAIN: f32 = 240.0;
 
 pub struct Spectrum {
     fft: Arc<dyn RealToComplex<f32>>,

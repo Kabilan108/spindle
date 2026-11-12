@@ -32,9 +32,10 @@ const BLOCKED: Duration = Duration::from_millis(4);
 /// The backend polls its queue every 10 ms, so a blocked `write` returns on average 5 ms into
 /// the next packet.
 const POLL_SLACK: f64 = 0.005;
-/// From rodio's mixer to the speaker: the output stream's buffer (cpal on ALSA, through
-/// PipeWire here).
-const OUTPUT_LATENCY: f64 = 0.040;
+/// From rodio's mixer to the speaker. Through PipeWire's ALSA plugin the stream asks for 1102
+/// frames (25 ms at 44.1 kHz) and the graph runs 1024-frame quanta at 48 kHz (21 ms), plus the
+/// card's own headroom: about 45 to 65 ms.
+const OUTPUT_LATENCY: f64 = 0.055;
 /// A frame drawn now is on screen about a frame later.
 const DISPLAY_LEAD: f64 = 0.016;
 /// A new play-head measurement moves the estimate this far toward it, smoothing out the
@@ -119,8 +120,14 @@ impl Tap {
         }
     }
 
+    /// The backend has played everything it was given: the estimate should be at the newest
+    /// sample, and how far off it is shows how well the visuals track the sound.
     fn stopped(&self) {
         let mut ring = self.ring();
+        if let Some(head) = ring.head {
+            let off_ms = (head.at(Instant::now()) - ring.written as f64) / f64::from(RATE) * 1000.0;
+            log::debug!("play head estimate {off_ms:+.1} ms from the output when it drained");
+        }
         ring.head = None;
         ring.packets.clear();
     }

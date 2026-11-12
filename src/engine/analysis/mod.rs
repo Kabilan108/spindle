@@ -58,7 +58,8 @@ impl Source for Simulated {
 
 /// Steps closer together than this are skipped; the display can't show them.
 const MIN_STEP: f64 = 0.015;
-/// After a longer gap (nothing was listening) the analysis restarts rather than catching up.
+/// After a longer gap (nothing was listening), or a clock that went back, the analysis restarts
+/// rather than catching up.
 const MAX_GAP: f64 = 0.5;
 
 struct Feed {
@@ -90,8 +91,8 @@ impl Analysis {
     pub fn step(&self, clock: f64, playing: bool) -> Option<AudioFrame> {
         let mut feed = self.feed.lock().unwrap_or_else(PoisonError::into_inner);
         let dt = match feed.clock {
-            Some(last) if clock - last < MIN_STEP => return None,
-            Some(last) if clock - last <= MAX_GAP => clock - last,
+            Some(last) if (0.0..MIN_STEP).contains(&(clock - last)) => return None,
+            Some(last) if (MIN_STEP..=MAX_GAP).contains(&(clock - last)) => clock - last,
             _ => HOP,
         };
         feed.clock = Some(clock);
@@ -154,5 +155,6 @@ mod tests {
         assert!(analysis.step(1.0, true).is_some());
         assert!(analysis.step(1.005, true).is_none());
         assert!(analysis.step(1.03, true).is_some());
+        assert!(analysis.step(0.2, true).is_some(), "a new clock starts over");
     }
 }

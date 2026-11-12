@@ -72,6 +72,28 @@ fn detail(store: &Store) {
     }
 }
 
+/// Runs the visualizers' analysis for `seconds`, as the UI would, and prints it four times a
+/// second: loudness, bass, mid, treble, kicks since the last line, and the 48 bands as a bar.
+fn levels(engine: &engine::Engine, seconds: f64) {
+    let analysis = engine.analysis();
+    let start = std::time::Instant::now();
+    let (mut kicks, mut printed) = (0, 0.0);
+    while start.elapsed().as_secs_f64() < seconds {
+        let clock = start.elapsed().as_secs_f64();
+        let playing = engine.read(|store| store.playback.playing);
+        if let Some(frame) = analysis.step(clock, playing) {
+            kicks += usize::from(frame.onset > 0.0);
+            if clock - printed >= 0.25 {
+                printed = clock;
+                let bar: String = frame.bands.iter().map(|v| [' ', '.', ':', '-', '=', '+', '*', '#'][(v * 7.99) as usize]).collect();
+                println!("levels {clock:5.2}s loud {:.2} bass {:.2} mid {:.2} treble {:.2} kicks {kicks} |{bar}|", frame.loudness, frame.bass, frame.mid, frame.treble);
+                kicks = 0;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs_f64(engine::analysis::HOP));
+    }
+}
+
 fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let engine = engine::Engine::spotify()?;
@@ -112,6 +134,10 @@ fn main() -> std::io::Result<()> {
                     println!("{}", summary(store));
                     detail(store);
                 });
+                continue;
+            }
+            "levels" => {
+                levels(&engine, rest.parse().unwrap_or(5.0));
                 continue;
             }
             "quit" => break,
