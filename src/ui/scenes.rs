@@ -42,6 +42,21 @@ fn playing(s: &mut Main) {
     s.link.send_and_wait(Command::PlayPause, |store| store.playback.playing);
 }
 
+fn album_playing(s: &mut Main) {
+    open(s, "spotify:album:demo2");
+    s.link.send_and_wait(Command::PlayContext { uri: "spotify:album:demo2".into(), track_uri: None }, |store| store.playback.playing);
+}
+
+fn stage(s: &mut Main) {
+    let album = "spotify:album:demo0";
+    s.link.send_and_wait(Command::PlayContext { uri: album.into(), track_uri: Some("spotify:track:demo0x2".into()) }, |store| store.playback.playing);
+    s.viz.open_stage();
+}
+
+fn stage_paused(s: &mut Main) {
+    s.viz.open_stage();
+}
+
 fn sign_in(s: &mut Main) {
     s.preview_session = Some(SessionState::NeedsLogin {
         url: Some("https://accounts.spotify.com/authorize?response_type=code&client_id=baliset-demo&redirect_uri=http%3A%2F%2F127.0.0.1%3A8898%2Flogin&scope=streaming&state=f3k9".into()),
@@ -185,4 +200,7 @@ pub const MAIN_SCENES: &[Scene<Main>] = &[
     ("up-next", up_next),
     ("shuffled", shuffled),
     ("radio", radio),
+    ("album-playing", album_playing),
+    ("stage", stage),
+    ("stage-paused", stage_paused),
 ];

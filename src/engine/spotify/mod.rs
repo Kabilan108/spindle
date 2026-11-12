@@ -42,6 +42,7 @@ use self::catalog::Catalog;
 use self::auth::Login;
 use self::http::Http;
 use self::library::Library;
+use super::analysis::tap::{self, TapSink, TapSource};
 use super::{Backend, Shared};
 use crate::model::{Command, EPISODES_URI, LIKED_URI, Loadable, NamedRef, Playback, Repeat, Search, SessionState, Track};
 use crate::settings::AudioQuality;
@@ -119,6 +120,7 @@ impl Backend for Spotify {
 }
 
 pub(super) fn start(shared: Arc<Shared>) -> std::io::Result<Arc<dyn Backend>> {
+    shared.analysis.set_source(Box::new(TapSource::new(tap::tap())));
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("baliset-engine").enable_all().build()?;
     let (commands, receiver) = unbounded_channel();
     let http = Arc::new(Http::new());
@@ -151,7 +153,10 @@ impl Audio {
             AudioQuality::VeryHigh => Bitrate::Bitrate320,
         };
         let config = PlayerConfig { bitrate, normalisation: chosen.normalize_volume, ..PlayerConfig::default() };
-        let player = Player::new(config, session.clone(), mixer.get_soft_volume(), move || open_sink(None, AudioFormat::default()));
+        let tap_mixer = mixer.clone();
+        let player = Player::new(config, session.clone(), Box::new(mixer::NoOpVolume), move || {
+            Box::new(TapSink::new(open_sink(None, AudioFormat::default()), tap::tap(), tap_mixer.get_soft_volume()))
+        });
         Ok(Self { player, mixer })
     }
 }

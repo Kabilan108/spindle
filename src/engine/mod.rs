@@ -2,7 +2,9 @@
 //! [`Command`]s. [`Engine::demo`] is a stand-in with canned data, for headless renders and
 //! UI work without an account.
 
+pub mod analysis;
 mod demo;
+mod demo_art;
 mod images;
 #[cfg(feature = "spotify")]
 mod spotify;
@@ -34,6 +36,7 @@ pub(crate) struct Shared {
     store: Mutex<Store>,
     listeners: Mutex<Vec<Listener>>,
     images: images::Images,
+    analysis: analysis::Analysis,
 }
 
 impl Shared {
@@ -42,6 +45,7 @@ impl Shared {
             store: Mutex::new(Store::default()),
             listeners: Mutex::new(Vec::new()),
             images: images::Images::default(),
+            analysis: analysis::Analysis::new(),
         })
     }
 
@@ -102,6 +106,11 @@ impl Engine {
     /// Read the store. Keep the closure short: the engine's threads wait on the same lock.
     pub fn read<R>(&self, read: impl FnOnce(&Store) -> R) -> R {
         self.shared.read(read)
+    }
+
+    /// The visualizers' audio analysis. It runs only when stepped; see [`analysis`].
+    pub fn analysis(&self) -> analysis::Analysis {
+        self.shared.analysis.clone()
     }
 
     pub fn send(&self, command: Command) {

@@ -16,6 +16,7 @@ mod session;
 mod settings_panel;
 mod sidebar;
 pub mod theme;
+mod viz;
 mod widgets;
 pub mod zoom;
 
@@ -94,6 +95,7 @@ pub struct Main {
     pub queue_open: bool,
     /// A song radio asked for and not found yet, by seed track URI; it opens when it arrives.
     pub awaiting_radio: Option<String>,
+    pub viz: viz::Viz,
 }
 
 impl Main {
@@ -101,6 +103,7 @@ impl Main {
         let mut volume = Volume::default();
         volume.sync(&link);
         Self {
+            viz: viz::Viz::new(link.analysis()),
             link,
             art: Art::default(),
             rev: 0,
@@ -255,7 +258,8 @@ pub fn main_poll(s: &mut Main, clock: f64, tx: &mut Tx) -> bool {
     }
     let visible = s.visible();
     s.progress.poll(&s.link, visible, clock, tx);
-    s.zoom.poll(clock, tx)
+    let zooming = s.zoom.poll(clock, tx);
+    viz::poll(s, clock, tx) || zooming
 }
 
 fn chord(spec: &str, ev: &KeyEvent, tx: &Tx) -> bool {
@@ -277,6 +281,10 @@ pub fn main_key(s: &mut Main, ev: &KeyEvent, tx: &mut Tx) -> bool {
         s.link.send(Command::Next);
     } else if chord("mod+left", ev, tx) {
         s.link.send(Command::Previous);
+    } else if matches!(ev.key, Key::Escape) && s.viz.stage_open {
+        s.viz.close_stage();
+    } else if chord("mod+e", ev, tx) {
+        if s.viz.stage_open { s.viz.close_stage() } else { s.viz.open_stage() }
     } else if chord("mod+w", ev, tx) {
         tx.close_window();
     } else if chord("mod+q", ev, tx) {
@@ -306,6 +314,9 @@ pub fn main_view(s: &Main, cx: &mut Cx<Main>) -> El {
 }
 
 fn shell(s: &Main, cx: &mut Cx<Main>, p: Palette, session: &SessionState) -> El {
+    if s.viz.stage_open {
+        return viz::stage::shell(s);
+    }
     let pane = match &s.route {
         Route::Home => home::view(s, cx, p),
         Route::Search => search::view(s, cx, p),

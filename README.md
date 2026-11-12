@@ -85,6 +85,21 @@ all 20 checks passed
 
 To cover a new endpoint, append an entry to `CHECKS` in `src/engine/spotify/check.rs`.
 
+## Visualizers
+
+Album and playlist pages sit in slow pools of the cover's colours that drift and swell with
+the music. The expand button at the right of the now-playing bar, or Ctrl+E, opens the Stage, a
+full-window player: the blurred cover behind, the art turning as a disc inside a spectrum ring,
+the track, seek bar and transport beside it. Esc, Ctrl+E or the collapse button closes it.
+
+![The Stage](docs/screens/stage.png)
+
+The music comes from a tap between librespot's player and the sound card, taken before the
+volume, so a muted player still drives them. The analysis runs only while one of them is on
+screen in a visible window and something plays; paused, hidden or elsewhere, nothing runs. The
+demo engine feeds them a simulated track. `baliset-engine` has a `levels SECONDS` command that
+prints what the analysis hears.
+
 ## Develop
 
 ```sh

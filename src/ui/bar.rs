@@ -98,7 +98,7 @@ fn now(s: &Main, p: Palette, f: &Facts) -> El {
 }
 
 /// A toggle's icon, in the accent with a dot under it while on.
-fn toggle(key: &str, label: &str, glyph: &'static rune::Icon, on: bool, p: Palette) -> El {
+pub(super) fn toggle(key: &str, label: &str, glyph: &'static rune::Icon, on: bool, p: Palette) -> El {
     let ink = if on { p.accent } else { p.muted };
     col()
         .key(key)
@@ -178,7 +178,7 @@ fn transport(s: &Main, p: Palette, f: &Facts) -> El {
 }
 
 /// A thin bar with a fill and a knob, both moved by live values. The knob shows on hover.
-fn slider(key: &str, label: &str, bar: &Bar, p: Palette, thickness: f32, knob: f32) -> El {
+pub(super) fn slider(key: &str, label: &str, bar: &Bar, p: Palette, thickness: f32, knob: f32) -> El {
     let hit = 16.0;
     el().key(key)
         .role("slider")
@@ -217,6 +217,10 @@ fn extras(s: &Main, p: Palette, f: &Facts) -> El {
         .center_y()
         .justify_end()
         .child(toggle("queue-toggle", "Up next", &icons::QUEUE, s.queue_open, p).on_press(|s: &mut Main| s.queue_open = !s.queue_open))
+        .child(
+            icon_button("stage-open", "Open the full player (Ctrl+E)", &super::viz::EXPAND, 32.0, p.muted, p)
+                .on_press(|s: &mut Main| s.viz.open_stage()),
+        )
         .child(
             icon_button("mute", if f.volume <= 0.0 { "Unmute" } else { "Mute" }, volume_glyph, 32.0, p.muted, p)
                 .on_press(|s: &mut Main| s.volume.toggle_mute(&s.link)),

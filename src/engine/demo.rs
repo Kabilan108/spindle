@@ -141,6 +141,9 @@ fn search(query: &str) -> SearchResults {
 
 /// A two-colour diagonal PNG, different for every seed.
 fn cover(seed: usize) -> Vec<u8> {
+    if let Some(painted) = super::demo_art::cover(seed) {
+        return painted;
+    }
     const SIZE: u32 = 96;
     let channel = |salt: usize| ((seed * 67 + salt * 101) % 200 + 40) as f32;
     let (a, b) = ([channel(1), channel(2), channel(3)], [channel(4), channel(5), channel(6)]);
@@ -270,6 +273,7 @@ impl Backend for Demo {
 }
 
 pub(super) fn start(shared: Arc<Shared>) -> Arc<dyn Backend> {
+    shared.analysis.set_source(Box::new(super::analysis::Simulated::default()));
     let mut queue = Queue { tracks: playlist_tracks(0), index: 2, ..Queue::default() };
     shared.update(|store| {
         *store = Store {
