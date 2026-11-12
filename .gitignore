@@ -2,3 +2,4 @@
 /target-engine
 /result
 .direnv
+/examples/probe.rs
