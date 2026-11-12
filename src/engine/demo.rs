@@ -1,5 +1,6 @@
 //! Canned data and a pretend player. Nothing here touches the network or the sound card.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -7,7 +8,7 @@ use std::time::{Duration, Instant};
 use super::{Backend, Shared};
 use crate::model::{
     Command, ContextKind, ContextPage, ContextSummary, LIKED_URI, Loadable, NamedRef, Search, SearchResults,
-    SessionState, Store, Track,
+    SessionState, Store, Track, UpNext,
 };
 
 const ALBUMS: &[(&str, &str, &[&str])] = &[
@@ -159,11 +160,90 @@ fn cover(seed: usize) -> Vec<u8> {
     out
 }
 
-/// The pretend player's queue: the tracks of the playing context and where it is in them.
+/// The pretend player's state: the tracks of the playing context and where it is in them,
+/// what was added to the queue, and the playlists as edited since launch.
 #[derive(Default)]
 struct Queue {
     tracks: Vec<Track>,
     index: usize,
+    queued: Vec<Track>,
+    edited: HashMap<String, Vec<Track>>,
+}
+
+/// Up next shows this many of the context's tracks, as the real queue does.
+const UPCOMING: usize = 40;
+
+const RADIO_PREFIX: &str = "spotify:playlist:radio-";
+
+/// The demo account owns these playlists or collaborates on them.
+fn editable(index: usize) -> bool {
+    PLAYLISTS[index].1 == "kabilan" || index == 4
+}
+
+fn all_tracks() -> Vec<Track> {
+    (0..ALBUMS.len()).flat_map(album_tracks).collect()
+}
+
+fn find_track(uri: &str) -> Option<Track> {
+    all_tracks().into_iter().find(|track| track.uri == uri)
+}
+
+/// A song radio: the seed, then a stride through everything else.
+fn radio_page(uri: &str) -> Option<ContextPage> {
+    let seed = find_track(&format!("spotify:track:{}", uri.strip_prefix(RADIO_PREFIX)?))?;
+    let mut tracks = vec![seed.clone()];
+    let others: Vec<Track> = all_tracks().into_iter().filter(|track| track.uri != seed.uri).collect();
+    tracks.extend((0..others.len()).map(|n| others[(n * 7) % others.len()].clone()).take(24));
+    let summary = ContextSummary {
+        uri: uri.to_owned(),
+        name: format!("{} Radio", seed.name),
+        subtitle: "Spotify".into(),
+        image_url: seed.image_url.clone(),
+        kind: ContextKind::Playlist,
+    };
+    Some(ContextPage { summary, tracks, albums: Vec::new(), truncated: false })
+}
+
+/// The same tracks in an order that looks shuffled and is the same every run.
+fn shuffled(tracks: Vec<Track>) -> Vec<Track> {
+    let n = tracks.len();
+    let step = (n / 3 + 1..n).find(|&step| gcd(step, n) == 1).unwrap_or(1);
+    (0..n).map(|i| tracks[(i * step + 3) % n].clone()).collect()
+}
+
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+impl Queue {
+    fn page(&self, uri: &str) -> Option<ContextPage> {
+        let mut page = page(uri).or_else(|| radio_page(uri))?;
+        if let Some(edited) = self.edited.get(uri) {
+            page.tracks.clone_from(edited);
+        }
+        Some(page)
+    }
+
+    fn up_next(&self) -> UpNext {
+        let upcoming = self.tracks.iter().skip(self.index + 1).take(UPCOMING).cloned().collect();
+        UpNext { queued: self.queued.clone(), upcoming }
+    }
+
+    /// Change a playlist's tracks and show the change wherever the playlist is open.
+    fn edit(&mut self, store: &mut Store, uri: &str, change: impl FnOnce(&mut Vec<Track>) -> Result<(), String>) {
+        let Some(mut page) = self.page(uri) else {
+            store.notice = Some(format!("Can't change {uri}"));
+            return;
+        };
+        if let Err(error) = change(&mut page.tracks) {
+            store.notice = Some(error);
+            return;
+        }
+        self.edited.insert(uri.to_owned(), page.tracks.clone());
+        if store.pages.get(uri).is_some_and(|loaded| loaded.ready().is_some()) {
+            store.pages.insert(uri.to_owned(), Loadable::Ready(page));
+        }
+    }
 }
 
 struct Demo {
@@ -185,7 +265,7 @@ impl Backend for Demo {
 }
 
 pub(super) fn start(shared: Arc<Shared>) -> Arc<dyn Backend> {
-    let mut queue = Queue { tracks: playlist_tracks(0), index: 2 };
+    let mut queue = Queue { tracks: playlist_tracks(0), index: 2, ..Queue::default() };
     shared.update(|store| {
         *store = Store {
             session: SessionState::Online { user: "kabilan".into() },
@@ -193,8 +273,10 @@ pub(super) fn start(shared: Arc<Shared>) -> Arc<dyn Backend> {
             playlists: Loadable::Ready((0..PLAYLISTS.len()).map(playlist_summary).collect()),
             albums: Loadable::Ready((0..ALBUMS.len()).map(album_summary).collect()),
             liked: liked_tracks().into_iter().map(|t| t.uri).collect(),
+            editable: (0..PLAYLISTS.len()).filter(|&i| editable(i)).map(|i| playlist_summary(i).uri).collect(),
             ..Store::default()
         };
+        store.up_next = queue.up_next();
         store.playback.track = queue.tracks.get(queue.index).cloned();
         store.playback.context_uri = Some(playlist_summary(0).uri);
         store.playback.position_ms = 47_000;
@@ -207,14 +289,20 @@ pub(super) fn start(shared: Arc<Shared>) -> Arc<dyn Backend> {
     std::thread::spawn(move || {
         loop {
             match receiver.recv_timeout(Duration::from_millis(500)) {
-                Ok(command) => player.update(|store| apply(store, &mut queue, command)),
+                Ok(command) => player.update(|store| {
+                    apply(store, &mut queue, command);
+                    store.up_next = queue.up_next();
+                }),
                 Err(RecvTimeoutError::Timeout) => {
                     let ended = player.read(|store| {
                         let playback = &store.playback;
                         playback.playing && playback.track.as_ref().is_some_and(|t| playback.position_now() >= t.duration_ms)
                     });
                     if ended {
-                        player.update(|store| skip(store, &mut queue, 1));
+                        player.update(|store| {
+                            skip(store, &mut queue, 1);
+                            store.up_next = queue.up_next();
+                        });
                     }
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -230,6 +318,11 @@ fn seek(store: &mut Store, position_ms: u32) {
 }
 
 fn skip(store: &mut Store, queue: &mut Queue, by: isize) {
+    if by > 0 && !queue.queued.is_empty() {
+        store.playback.track = Some(queue.queued.remove(0));
+        seek(store, 0);
+        return;
+    }
     if queue.tracks.is_empty() {
         return;
     }
@@ -239,7 +332,8 @@ fn skip(store: &mut Store, queue: &mut Queue, by: isize) {
 }
 
 fn start_queue(store: &mut Store, queue: &mut Queue, tracks: Vec<Track>, index: usize, context: Option<String>) {
-    *queue = Queue { index: index.min(tracks.len().saturating_sub(1)), tracks };
+    queue.index = index.min(tracks.len().saturating_sub(1));
+    queue.tracks = tracks;
     store.playback.track = queue.tracks.get(queue.index).cloned();
     store.playback.context_uri = context;
     store.playback.playing = true;
@@ -268,7 +362,7 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
         Command::SetShuffle(shuffle) => store.playback.shuffle = shuffle,
         Command::SetRepeat(repeat) => store.playback.repeat = repeat,
         Command::PlayContext { uri, track_uri } => {
-            let Some(page) = page(&uri) else {
+            let Some(page) = queue.page(&uri) else {
                 store.notice = Some(format!("Can't play {uri}"));
                 return;
             };
@@ -278,12 +372,12 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
             start_queue(store, queue, page.tracks, index, Some(uri));
         }
         Command::PlayTracks { uris, index } => {
-            let all: Vec<Track> = (0..ALBUMS.len()).flat_map(album_tracks).collect();
+            let all = all_tracks();
             let tracks = uris.iter().filter_map(|uri| all.iter().find(|t| &t.uri == uri).cloned()).collect();
             start_queue(store, queue, tracks, index, None);
         }
         Command::LoadContext { uri } => {
-            let loaded = page(&uri).map_or_else(|| Loadable::Failed("Not found".into()), Loadable::Ready);
+            let loaded = queue.page(&uri).map_or_else(|| Loadable::Failed("Not found".into()), Loadable::Ready);
             store.pages.insert(uri, loaded);
         }
         Command::RefreshLibrary => {}
@@ -299,5 +393,55 @@ fn apply(store: &mut Store, queue: &mut Queue, command: Command) {
             }
         }
         Command::DismissNotice => store.notice = None,
+        Command::AddToQueue { uri } => match find_track(&uri) {
+            Some(track) => queue.queued.push(track),
+            None => store.notice = Some(format!("Can't queue {uri}")),
+        },
+        Command::SkipTo { uri } => {
+            if let Some(at) = queue.queued.iter().position(|track| track.uri == uri) {
+                queue.queued.drain(..at);
+                skip(store, queue, 1);
+            } else if let Some(at) = queue.tracks.iter().skip(queue.index + 1).position(|track| track.uri == uri) {
+                queue.queued.clear();
+                skip(store, queue, at as isize + 1);
+            }
+        }
+        Command::RemoveFromQueue { index } => {
+            if index < queue.queued.len() {
+                queue.queued.remove(index);
+            }
+        }
+        Command::LoadRadio { track_uri } => {
+            let radio = track_uri.strip_prefix("spotify:track:").map(|id| format!("{RADIO_PREFIX}{id}")).filter(|uri| radio_page(uri).is_some());
+            let loaded = radio.map_or_else(|| Loadable::Failed("No radio for this song".into()), Loadable::Ready);
+            store.radios.insert(track_uri, loaded);
+        }
+        Command::AddToPlaylist { playlist_uri, track_uri } => {
+            let Some(track) = find_track(&track_uri) else {
+                store.notice = Some(format!("Can't add {track_uri}"));
+                return;
+            };
+            queue.edit(store, &playlist_uri, |tracks| {
+                tracks.push(track);
+                Ok(())
+            });
+        }
+        Command::RemoveFromPlaylist { playlist_uri, track_uri, index } => queue.edit(store, &playlist_uri, |tracks| {
+            if tracks.get(index).is_none_or(|track| track.uri != track_uri) {
+                return Err("The playlist changed. Try again.".into());
+            }
+            tracks.remove(index);
+            Ok(())
+        }),
+        Command::PlayShuffled { uri } => {
+            let Some(page) = queue.page(&uri) else {
+                store.notice = Some(format!("Can't play {uri}"));
+                return;
+            };
+            store.playback.shuffle = true;
+            store.recents.retain(|recent| recent.uri != uri);
+            store.recents.insert(0, page.summary);
+            start_queue(store, queue, shuffled(page.tracks), 0, Some(uri));
+        }
     }
 }

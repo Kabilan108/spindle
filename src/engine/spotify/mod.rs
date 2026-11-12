@@ -6,8 +6,10 @@
 
 mod auth;
 mod catalog;
+mod edits;
 mod http;
 mod library;
+mod queue;
 mod wire;
 
 use std::future::Future;
@@ -48,6 +50,8 @@ const CONCURRENT_IMAGES: usize = 6;
 const COVER_WIDTH: i32 = 300;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const CLUSTER_UPDATES: &str = "hm://connect-state/v1/cluster";
+/// How long librespot takes to publish a change to its queue, near enough.
+const QUEUE_SETTLE: Duration = Duration::from_millis(700);
 
 struct Dirs {
     data: PathBuf,
@@ -301,8 +305,10 @@ async fn run(shared: Arc<Shared>, mut commands: UnboundedReceiver<Command>, http
             session: &session,
             mixer: audio.as_ref().map(|audio| audio.mixer.clone()),
             player: audio.as_ref().map(|audio| audio.player.clone()),
+            queue: queue::Watch::new(library.clone(), session.clone(), shared.clone()),
         };
         let ended = online.serve(&mut commands, connected).await;
+        library.clear_up_next();
         library.set_catalog(None);
         session.shutdown();
         match ended {
@@ -459,6 +465,7 @@ struct Online<'a> {
     session: &'a Session,
     mixer: Option<Arc<dyn Mixer>>,
     player: Option<Arc<Player>>,
+    queue: Arc<queue::Watch>,
 }
 
 impl Online<'_> {
@@ -523,6 +530,7 @@ impl Online<'_> {
                     store.playback.position_at = Instant::now();
                 });
                 tokio::spawn(self.library.clone().describe_playing(uri));
+                self.queue.reread(QUEUE_SETTLE);
             }
             PlayerEvent::Loading { position_ms, .. } => self.shared.update(|store| {
                 store.playback.loading = true;
@@ -549,7 +557,10 @@ impl Online<'_> {
                 store.notice = Some("That track can't be played here.".to_owned());
             }),
             PlayerEvent::VolumeChanged { volume } => self.shared.update(|store| store.playback.volume = f32::from(volume) / f32::from(u16::MAX)),
-            PlayerEvent::ShuffleChanged { shuffle } => self.shared.update(|store| store.playback.shuffle = shuffle),
+            PlayerEvent::ShuffleChanged { shuffle } => {
+                self.shared.update(|store| store.playback.shuffle = shuffle);
+                self.queue.reread(QUEUE_SETTLE);
+            }
             PlayerEvent::RepeatChanged { context, track } => self.shared.update(|store| {
                 store.playback.repeat = match (track, context) {
                     (true, _) => Repeat::Track,
@@ -577,8 +588,10 @@ impl Online<'_> {
                     store.playback.halt();
                 });
             }
+            self.queue.clear();
             return;
         }
+        self.queue.report(&cluster.player_state);
         let context = library::normalize_context(&cluster.player_state.context_uri);
         let context = Some(context).filter(|uri| !uri.is_empty());
         let changed = self.shared.read(|store| store.playback.context_uri != context || !store.playback.active);
@@ -592,6 +605,41 @@ impl Online<'_> {
         if let Some(uri) = context {
             tokio::spawn(self.library.clone().note_played(uri));
         }
+    }
+
+    /// Hand a player command to this device through Connect, in the background, then read
+    /// the queue back.
+    fn send_to_self(&self, body: serde_json::Value, failure: &'static str) {
+        let (session, shared, watch) = (self.session.clone(), self.shared.clone(), self.queue.clone());
+        tokio::spawn(async move {
+            match queue::send(&session, &body).await {
+                Ok(()) => watch.reread(QUEUE_SETTLE),
+                Err(error) => {
+                    log::warn!("{failure}: {error}");
+                    shared.update(|store| store.notice = Some(format!("{failure}: {error}")));
+                }
+            }
+        });
+    }
+
+    fn play_context(&self, spirc: &Spirc, uri: String, track_uri: Option<String>, options: Options, active: bool) -> Result<(), librespot_core::Error> {
+        let context = if uri == LIKED_URI { format!("spotify:user:{}:collection", self.session.username()) } else { uri.clone() };
+        // librespot reports no shuffle change for a load that sets it; the queue's read-back
+        // confirms it.
+        let shuffle = options.shuffle;
+        let options = LoadRequestOptions {
+            start_playing: true,
+            seek_to: 0,
+            context_options: Some(LoadContextOptions::Options(options)),
+            playing_track: track_uri.map(PlayingTrack::Uri),
+        };
+        self.shared.update(|store| {
+            store.playback.context_uri = Some(uri.clone());
+            store.playback.loading = true;
+            store.playback.shuffle = shuffle;
+        });
+        tokio::spawn(self.library.clone().note_played(uri));
+        self.activate(spirc, active).and_then(|()| spirc.load(LoadRequest::from_context_uri(context, options)))
     }
 
     fn command(&self, spirc: &Spirc, command: Command) {
@@ -620,19 +668,8 @@ impl Online<'_> {
             Command::SetShuffle(shuffle) => spirc.shuffle(shuffle),
             Command::SetRepeat(repeat) => spirc.repeat(repeat != Repeat::Off).and_then(|()| spirc.repeat_track(repeat == Repeat::Track)),
             Command::PlayContext { uri, track_uri } => {
-                let context = if uri == LIKED_URI { format!("spotify:user:{}:collection", self.session.username()) } else { uri.clone() };
-                let options = LoadRequestOptions {
-                    start_playing: true,
-                    seek_to: 0,
-                    context_options: Some(LoadContextOptions::Options(Options { shuffle, repeat: repeat != Repeat::Off, repeat_track: repeat == Repeat::Track })),
-                    playing_track: track_uri.map(PlayingTrack::Uri),
-                };
-                self.shared.update(|store| {
-                    store.playback.context_uri = Some(uri.clone());
-                    store.playback.loading = true;
-                });
-                tokio::spawn(self.library.clone().note_played(uri));
-                self.activate(spirc, active).and_then(|()| spirc.load(LoadRequest::from_context_uri(context, options)))
+                let options = Options { shuffle, repeat: repeat != Repeat::Off, repeat_track: repeat == Repeat::Track };
+                self.play_context(spirc, uri, track_uri, options, active)
             }
             Command::PlayTracks { uris, index } => {
                 let options = LoadRequestOptions {
@@ -666,6 +703,47 @@ impl Online<'_> {
             Command::DismissNotice => {
                 self.shared.update(|store| store.notice = None);
                 Ok(())
+            }
+            Command::AddToQueue { uri } => {
+                if active {
+                    self.send_to_self(queue::add_to_queue(&uri), "Couldn't add to the queue");
+                } else {
+                    self.shared.update(|store| store.notice = Some("Play something here first, then add to the queue.".to_owned()));
+                }
+                Ok(())
+            }
+            Command::SkipTo { uri } => {
+                // librespot skips until it reaches the track, so it has to be there.
+                if self.queue.snapshot().plays_next(&uri) {
+                    self.send_to_self(queue::skip_to(&uri), "Couldn't skip to that song");
+                }
+                Ok(())
+            }
+            Command::RemoveFromQueue { index } => {
+                let body = {
+                    let snapshot = self.queue.snapshot();
+                    snapshot.without_queued(index).map(|next| queue::set_queue(&next, &snapshot))
+                };
+                if let Some(body) = body {
+                    self.send_to_self(body, "Couldn't change the queue");
+                }
+                Ok(())
+            }
+            Command::LoadRadio { track_uri } => {
+                tokio::spawn(self.library.clone().load_radio(track_uri));
+                Ok(())
+            }
+            Command::AddToPlaylist { playlist_uri, track_uri } => {
+                tokio::spawn(self.library.clone().add_to_playlist(playlist_uri, track_uri));
+                Ok(())
+            }
+            Command::RemoveFromPlaylist { playlist_uri, track_uri, index } => {
+                tokio::spawn(self.library.clone().remove_from_playlist(playlist_uri, track_uri, index));
+                Ok(())
+            }
+            Command::PlayShuffled { uri } => {
+                let options = Options { shuffle: true, repeat: repeat != Repeat::Off, repeat_track: repeat == Repeat::Track };
+                self.play_context(spirc, uri, None, options, active)
             }
         };
         if let Err(error) = sent {
